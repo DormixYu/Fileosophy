@@ -1,0 +1,26 @@
+{
+  "identifier": "default",
+  "description": "Fileosophy 主窗口默认权限",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-ask",
+    "dialog:allow-message",
+    "shell:default",
+    "shell:allow-open",
+    "notification:default",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
+    "notification:allow-notify",
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-is-registered",
+    "fs:default",
+    "fs:allow-read-file",
+    "fs:allow-exists"
+  ]
+}
