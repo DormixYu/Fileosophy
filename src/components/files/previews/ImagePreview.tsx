@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, RotateCw } from "lucide-react";
 
 interface Props {
   src: string;
@@ -12,6 +12,8 @@ export default function ImagePreview({ src, alt }: Props) {
 
   const zoomIn = () => setScale((s) => Math.min(s + 0.25, 5));
   const zoomOut = () => setScale((s) => Math.max(s - 0.25, 0.25));
+  const rotateLeft = () => setRotation((r) => r - 90);
+  const rotateRight = () => setRotation((r) => r + 90);
   const reset = () => {
     setScale(1);
     setRotation(0);
@@ -47,10 +49,26 @@ export default function ImagePreview({ src, alt }: Props) {
           <ZoomIn size={14} strokeWidth={1.5} />
         </button>
         <button
+          onClick={rotateLeft}
+          className="p-1.5 rounded transition-colors hover:bg-[var(--bg-elevated)]"
+          style={{ color: "var(--text-secondary)" }}
+          title="逆时针旋转"
+        >
+          <RotateCcw size={14} strokeWidth={1.5} />
+        </button>
+        <button
+          onClick={rotateRight}
+          className="p-1.5 rounded transition-colors hover:bg-[var(--bg-elevated)]"
+          style={{ color: "var(--text-secondary)" }}
+          title="顺时针旋转"
+        >
+          <RotateCw size={14} strokeWidth={1.5} />
+        </button>
+        <button
           onClick={reset}
           className="p-1.5 rounded transition-colors hover:bg-[var(--bg-elevated)]"
           style={{ color: "var(--text-secondary)" }}
-          title="重置"
+          title="重置缩放和旋转"
         >
           <RotateCcw size={14} strokeWidth={1.5} />
         </button>

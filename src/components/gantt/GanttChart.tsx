@@ -1,34 +1,37 @@
-import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { Plus, Trash2, Crosshair } from "lucide-react";
 import { useGanttStore } from "@/stores/useGanttStore";
+import { useKanbanStore } from "@/stores/useKanbanStore";
+import { kanbanApi } from "@/lib/tauri-api";
 import type { GanttTask } from "@/types";
 import Modal from "@/components/common/Modal";
+import Spinner from "@/components/common/Spinner";
+import EmptyState from "@/components/common/EmptyState";
+import { ROW_HEIGHT, NAME_WIDTH, BAR_HEIGHT, BAR_TOP, daysBetween, addDays, getToday, formatLocalDate } from "@/lib/ganttUtils";
+import DatePicker from "@/components/common/DatePicker";
 
 interface Props {
   projectId: number;
 }
 
-// 布局常量
 const DAY_WIDTH = 28;
-const ROW_HEIGHT = 32;
-const NAME_WIDTH = 160;
-const BAR_AREA_HEIGHT = 20;
-const BAR_TOP = 4; // top-1 = 0.25rem = 4px
-const BAR_HEIGHT = 16;
-const BAR_CENTER_Y = (ROW_HEIGHT - BAR_AREA_HEIGHT) / 2 + BAR_TOP + BAR_HEIGHT / 2;
+const BAR_CENTER_Y = BAR_TOP + BAR_HEIGHT / 2;
 
 export default function GanttChart({ projectId }: Props) {
   const { tasks, fetchTasks, addTask, updateTask, deleteTask, loading } =
     useGanttStore();
+  const { fetchBoard } = useKanbanStore();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // 添加任务
   const [showAdd, setShowAdd] = useState(false);
   const [addName, setAddName] = useState("");
   const [addStartDate, setAddStartDate] = useState(
-    new Date().toISOString().split("T")[0],
+    getToday(),
   );
   const [addDuration, setAddDuration] = useState(3);
   const [addDeps, setAddDeps] = useState<number[]>([]);
+  const [syncToKanban, setSyncToKanban] = useState(false);
 
   // 编辑任务
   const [editingTask, setEditingTask] = useState<GanttTask | null>(null);
@@ -45,21 +48,30 @@ export default function GanttChart({ projectId }: Props) {
   // 添加任务
   const handleAdd = async () => {
     if (!addName.trim()) return;
-    await addTask({
+    const result = await addTask({
       project_id: projectId,
       name: addName.trim(),
       start_date: addStartDate,
       duration_days: addDuration,
       dependencies: addDeps,
     });
+    if (syncToKanban && result) {
+      try {
+        await kanbanApi.syncGanttToKanban(result.id);
+        fetchBoard(projectId);
+      } catch (e) {
+        console.warn("同步到看板失败:", e);
+      }
+    }
     resetAddForm();
   };
 
   const resetAddForm = () => {
     setAddName("");
-    setAddStartDate(new Date().toISOString().split("T")[0]);
+    setAddStartDate(getToday());
     setAddDuration(3);
     setAddDeps([]);
+    setSyncToKanban(false);
     setShowAdd(false);
   };
 
@@ -95,13 +107,48 @@ export default function GanttChart({ projectId }: Props) {
 
   const hasTasks = tasks.length > 0;
 
-  // 计算时间范围和依赖箭头数据
+  // 计算时间范围（与全局一致：空数据约120天，有数据前扩5后扩10）
   const dateRange = hasTasks ? getDateRange(tasks) : null;
-  const totalDays = dateRange ? daysBetween(dateRange.minDate, dateRange.maxDate) + 1 : 30;
-  const minDate = dateRange?.minDate || new Date().toISOString().split("T")[0];
+  const totalDays = dateRange ? daysBetween(dateRange.minDate, dateRange.maxDate) + 1 : 120;
+  const minDate = dateRange?.minDate || (() => {
+    const now = new Date();
+    now.setMonth(now.getMonth() - 1);
+    return formatLocalDate(now);
+  })();
+  const today = getToday();
+
+  // 月份标签（与全局一致逻辑）
+  const monthLabels = useMemo(() => {
+    const labels: { label: string; startDay: number; span: number }[] = [];
+    const start = new Date(minDate);
+    const end = addDays(minDate, totalDays);
+    let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (cursor <= new Date(end)) {
+      const monthStart = formatLocalDate(cursor);
+      const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+      const monthEnd = formatLocalDate(nextMonth);
+      const startDay = Math.max(0, daysBetween(minDate, monthStart));
+      const endDay = Math.min(totalDays, daysBetween(minDate, monthEnd));
+      const y = cursor.getFullYear();
+      const m = cursor.getMonth() + 1;
+      const label = `${y}年${m}月`;
+      labels.push({ label, startDay, span: Math.max(1, endDay - startDay) });
+      cursor = nextMonth;
+    }
+    return labels;
+  }, [minDate, totalDays]);
 
   // 构建依赖箭头数据
   const arrows = hasTasks ? buildArrows(tasks, minDate) : [];
+
+  const scrollToToday = () => {
+    if (!containerRef.current) return;
+    const offset = daysBetween(minDate, today);
+    if (offset >= 0 && offset < totalDays) {
+      const scrollLeft = offset * DAY_WIDTH - 200;
+      containerRef.current.scrollLeft = Math.max(0, scrollLeft);
+    }
+  };
 
   // 空状态仍然显示添加按钮
   const header = (
@@ -109,10 +156,22 @@ export default function GanttChart({ projectId }: Props) {
       <h3 className="text-title" style={{ color: "var(--text-primary)" }}>
         甘特图
       </h3>
-      <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
-        <Plus size={14} strokeWidth={1.5} />
-        添加任务
-      </button>
+      <div className="flex items-center gap-2">
+        {hasTasks && (
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ color: "var(--text-secondary)" }}
+            onClick={scrollToToday}
+          >
+            <Crosshair size={14} strokeWidth={1.5} />
+            回到今天
+          </button>
+        )}
+        <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>
+          <Plus size={14} strokeWidth={1.5} />
+          添加任务
+        </button>
+      </div>
     </div>
   );
 
@@ -120,11 +179,8 @@ export default function GanttChart({ projectId }: Props) {
     return (
       <div className="space-y-4">
         {header}
-        <div
-          className="text-center py-12 text-sm"
-          style={{ color: "var(--text-muted)" }}
-        >
-          加载甘特图…
+        <div className="text-center py-12">
+          <Spinner />
         </div>
       </div>
     );
@@ -135,45 +191,110 @@ export default function GanttChart({ projectId }: Props) {
       {header}
 
       {!hasTasks ? (
-        <div className="card text-center py-12">
-          <p style={{ color: "var(--text-tertiary)" }}>暂无甘特图任务</p>
-        </div>
+        <EmptyState description="暂无甘特图任务" />
       ) : (
-        <div className="overflow-x-auto" style={{ position: "relative" }}>
+        <div
+          ref={containerRef}
+          className="overflow-x-auto"
+          style={{ position: "relative" }}
+        >
           <div style={{ minWidth: `${totalDays * DAY_WIDTH + NAME_WIDTH}px` }}>
-            {/* 日期刻度 */}
+            {/* 粘性时间轴头（月份 + 日期合并） */}
             <div
-              className="flex border-b mb-2"
-              style={{ borderColor: "var(--border-light)" }}
+              className="sticky top-0 z-20"
             >
-              {/* 名称占位 */}
-              <div className="shrink-0" style={{ width: NAME_WIDTH }} />
-              {Array.from({ length: totalDays }, (_, i) => {
-                const date = new Date(minDate);
-                date.setDate(date.getDate() + i);
-                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-                return (
+              {/* 月份刻度 */}
+              <div
+                className="flex border-b"
+                style={{
+                  background: "var(--bg-surface)",
+                  borderColor: "var(--border-light)",
+                }}
+              >
+                <div
+                  className="shrink-0 sticky left-0 z-30 border-r"
+                  style={{
+                    width: NAME_WIDTH,
+                    background: "var(--bg-surface)",
+                    borderColor: "var(--border-light)",
+                  }}
+                />
+                {monthLabels.map((m, i) => (
                   <div
                     key={i}
-                    className="shrink-0 text-center text-[9px] py-1"
+                    className="shrink-0 text-center text-[10px] font-medium py-1 border-r whitespace-nowrap overflow-hidden"
                     style={{
-                      width: DAY_WIDTH,
-                      color: isWeekend
-                        ? "var(--color-danger)"
-                        : "var(--text-muted)",
-                      background: isWeekend
-                        ? "var(--gold-glow)"
-                        : "transparent",
+                      width: m.span * DAY_WIDTH,
+                      color: "var(--text-secondary)",
+                      borderColor: "var(--border-light)",
                     }}
                   >
-                    {date.getDate()}
+                    {m.label}
                   </div>
-                );
-              })}
+                ))}
+              </div>
+
+              {/* 日期刻度 */}
+              <div
+                className="flex border-b"
+                style={{
+                  background: "var(--bg-surface)",
+                  borderColor: "var(--border-light)",
+                }}
+              >
+                <div
+                  className="shrink-0 sticky left-0 z-30 border-r"
+                  style={{
+                    width: NAME_WIDTH,
+                    background: "var(--bg-surface)",
+                    borderColor: "var(--border-light)",
+                  }}
+                />
+                {Array.from({ length: totalDays }, (_, i) => {
+                  const date = new Date(minDate);
+                  date.setDate(date.getDate() + i);
+                  const d = date.getDate();
+                  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                  const isToday = formatLocalDate(date) === today;
+                  return (
+                    <div
+                      key={i}
+                      className="shrink-0 text-center text-[9px] py-0.5 border-r"
+                      style={{
+                        width: DAY_WIDTH,
+                        fontWeight: d === 1 ? 600 : 400,
+                        color: isToday
+                          ? "#fff"
+                          : isWeekend
+                            ? "var(--color-danger)"
+                            : "var(--text-muted)",
+                        background: isToday
+                          ? "var(--gold)"
+                          : isWeekend
+                            ? "var(--gold-glow)"
+                            : "transparent",
+                        borderColor: "var(--border-light)",
+                      }}
+                    >
+                      {d}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* 任务行 + SVG 依赖箭头 */}
             <div style={{ position: "relative" }}>
+              {/* 今日线 */}
+              <div
+                className="absolute top-0 bottom-0 w-px z-10 pointer-events-none"
+                style={{
+                  left: daysBetween(minDate, today) * DAY_WIDTH,
+                  background: "var(--color-danger)",
+                  opacity: 0.4,
+                }}
+              />
+
               {/* SVG 依赖箭头 */}
               {arrows.length > 0 && (
                 <svg
@@ -215,17 +336,15 @@ export default function GanttChart({ projectId }: Props) {
               )}
 
               {/* 任务行 */}
-              <div className="space-y-1">
-                {tasks.map((task) => (
-                  <GanttRow
-                    key={task.id}
-                    task={task}
-                    minDate={minDate}
-                    totalDays={totalDays}
-                    onClick={() => handleEdit(task)}
-                  />
-                ))}
-              </div>
+              {tasks.map((task) => (
+                <GanttRow
+                  key={task.id}
+                  task={task}
+                  minDate={minDate}
+                  totalDays={totalDays}
+                  onClick={() => handleEdit(task)}
+                />
+              ))}
             </div>
           </div>
         </div>
@@ -271,17 +390,7 @@ export default function GanttChart({ projectId }: Props) {
               <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>
                 开始日期
               </label>
-              <input
-                type="date"
-                value={addStartDate}
-                onChange={(e) => setAddStartDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded outline-none"
-                style={{
-                  background: "var(--bg-surface-alt)",
-                  border: "1px solid var(--border-light)",
-                  color: "var(--text-primary)",
-                }}
-              />
+              <DatePicker value={addStartDate} onChange={setAddStartDate} style={{ background: "var(--bg-surface-alt)", border: "1px solid var(--border-light)", color: "var(--text-primary)" }} />
             </div>
             <div className="w-24">
               <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>
@@ -331,6 +440,18 @@ export default function GanttChart({ projectId }: Props) {
               </div>
             </div>
           )}
+          <label
+            className="flex items-center gap-2 mt-2 cursor-pointer"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            <input
+              type="checkbox"
+              checked={syncToKanban}
+              onChange={(e) => setSyncToKanban(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-xs">同步到看板待办事项</span>
+          </label>
         </div>
       </Modal>
 
@@ -386,17 +507,7 @@ export default function GanttChart({ projectId }: Props) {
               <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>
                 开始日期
               </label>
-              <input
-                type="date"
-                value={editStartDate}
-                onChange={(e) => setEditStartDate(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded outline-none"
-                style={{
-                  background: "var(--bg-surface-alt)",
-                  border: "1px solid var(--border-light)",
-                  color: "var(--text-primary)",
-                }}
-              />
+              <DatePicker value={editStartDate} onChange={setEditStartDate} style={{ background: "var(--bg-surface-alt)", border: "1px solid var(--border-light)", color: "var(--text-primary)" }} />
             </div>
             <div className="w-24">
               <label className="text-xs mb-1 block" style={{ color: "var(--text-muted)" }}>
@@ -484,16 +595,23 @@ function GanttRow({
   const width = task.duration_days;
 
   return (
-    <div className="flex items-center h-8">
+    <div className="flex items-center" style={{ height: ROW_HEIGHT }}>
+      {/* 名称列 - 粘性 */}
       <div
-        className="w-40 shrink-0 text-xs pr-2 truncate"
-        style={{ color: "var(--text-primary)" }}
+        className="shrink-0 sticky left-0 z-10 border-r flex items-center px-3 truncate"
+        style={{
+          width: NAME_WIDTH,
+          background: "var(--bg-surface)",
+          borderColor: "var(--border-light)",
+          color: "var(--text-primary)",
+          fontSize: 12,
+        }}
       >
         {task.name}
       </div>
-      <div className="relative flex-1" style={{ height: 20 }}>
-        {/* 背景网格 */}
-        <div className="absolute inset-0 flex">
+      <div className="relative flex-1" style={{ height: ROW_HEIGHT }}>
+        {/* 背景网格（周线加粗） */}
+        <div className="absolute inset-0 flex" style={{ height: ROW_HEIGHT }}>
           {Array.from({ length: totalDays }, (_, i) => (
             <div
               key={i}
@@ -501,18 +619,19 @@ function GanttRow({
               style={{
                 width: DAY_WIDTH,
                 borderColor: "var(--border-light)",
-                opacity: 0.5,
+                opacity: i % 7 === 0 ? 0.5 : 0.2,
               }}
             />
           ))}
         </div>
         {/* 任务条 */}
         <div
-          className="absolute top-1 rounded-sm transition-all cursor-pointer hover:opacity-100"
+          className="absolute rounded-sm transition-all cursor-pointer hover:opacity-100"
           style={{
+            top: BAR_TOP,
             left: offset * DAY_WIDTH,
             width: Math.max(width * DAY_WIDTH, 4),
-            height: 16,
+            height: BAR_HEIGHT,
             background: `linear-gradient(90deg, var(--gold), var(--gold-light))`,
             opacity: 0.85,
           }}
@@ -544,21 +663,11 @@ function getDateRange(tasks: GanttTask[]) {
     if (end > max) max = end;
   }
 
-  min = addDays(min, -3);
-  max = addDays(max, 3);
+  // 与全局一致：前扩5天，后扩10天
+  min = addDays(min, -5);
+  max = addDays(max, 10);
 
   return { minDate: min, maxDate: max };
-}
-
-function daysBetween(a: string, b: string): number {
-  const ms = new Date(b).getTime() - new Date(a).getTime();
-  return Math.round(ms / 86400000);
-}
-
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
 }
 
 // ── SVG 依赖箭头计算 ────────────────────────────────────────────
@@ -597,7 +706,7 @@ function buildArrows(
         NAME_WIDTH + fromOffset * DAY_WIDTH + depTask.duration_days * DAY_WIDTH;
       const fromY = fromIdx * ROW_HEIGHT + BAR_CENTER_Y;
 
-      // 贝塞尔曲线: 水平方向留控制点偏移
+      // 贝塞尔曲线
       const cpOffset = Math.min(Math.abs(toX - fromX) * 0.4, 30);
 
       const d =

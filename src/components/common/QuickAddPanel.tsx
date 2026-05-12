@@ -4,6 +4,7 @@ import { useProjectStore } from "@/stores/useProjectStore";
 import { useKanbanStore } from "@/stores/useKanbanStore";
 import { useGanttStore } from "@/stores/useGanttStore";
 import { kanbanApi } from "@/lib/tauri-api";
+import { getToday } from "@/lib/ganttUtils";
 
 interface Props {
   open: boolean;
@@ -82,7 +83,7 @@ export default function QuickAddPanel({ open, onClose }: Props) {
         await addTask({
           project_id: projectId,
           name: title.trim(),
-          start_date: new Date().toISOString().split("T")[0],
+          start_date: getToday(),
           duration_days: 3,
           dependencies: [],
         });

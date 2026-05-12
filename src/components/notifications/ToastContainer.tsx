@@ -2,9 +2,8 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, FileDown, Info, CheckCircle, AlertTriangle, ExternalLink } from "lucide-react";
 import { useNotificationStore, type ToastItem } from "@/stores/useNotificationStore";
-import { useSettingsStore } from "@/stores/useSettingsStore";
 import { listen } from "@tauri-apps/api/event";
-import type { NotificationPayload, FileSharedPayload } from "@/types";
+import type { NotificationPayload, FileSharedPayload, NotificationPreferences } from "@/types";
 
 const iconMap = {
   info: Info,
@@ -86,7 +85,6 @@ function Toast({ toast, onClose }: { toast: ToastItem; onClose: () => void }) {
 
 export default function ToastContainer() {
   const { toasts, addToast, removeToast } = useNotificationStore();
-  const { sendNativeNotification } = useSettingsStore();
 
   // 监听后端通知事件
   useEffect(() => {
@@ -95,14 +93,25 @@ export default function ToastContainer() {
     unlisteners.push(
       listen<NotificationPayload>("app-notification", (event) => {
         const type = (event.payload.type as ToastItem["type"]) || "info";
+        // 根据后端通知标题推断偏好 key
+        let prefKey: keyof NotificationPreferences | undefined;
+        const title = event.payload.title;
+        if (title.includes("项目") && title.includes("创建")) prefKey = "project_created";
+        else if (title.includes("项目") && title.includes("删除")) prefKey = "project_deleted";
+        else if (title.includes("状态") || title.includes("变更")) prefKey = "project_status_changed";
+        else if (title.includes("卡片") || title.includes("任务")) prefKey = "card_created";
+        else if (title.includes("文件") && title.includes("上传")) prefKey = "file_uploaded";
+        else if (title.includes("文件") && title.includes("删除")) prefKey = "file_deleted";
+        else if (title.includes("共享") && title.includes("开启")) prefKey = "share_started";
+        else if (title.includes("共享") && title.includes("停止")) prefKey = "share_stopped";
+
         addToast({
           type,
           title: event.payload.title,
           message: event.payload.message,
           link: event.payload.link,
+          prefKey,
         });
-        // 同时发送原生系统通知
-        sendNativeNotification(event.payload.title, event.payload.message);
       })
     );
 
@@ -113,17 +122,15 @@ export default function ToastContainer() {
             type: "success",
             title: "文件已发送",
             message: `已发送 "${event.payload.file_name}"`,
+            prefKey: "file_uploaded",
           });
         } else if (event.payload.status === "received") {
           addToast({
             type: "file-received",
             title: "收到文件",
             message: `来自 ${event.payload.peer_addr} 的文件已接收`,
+            prefKey: "file_received",
           });
-          sendNativeNotification(
-            "收到文件",
-            `来自 ${event.payload.peer_addr} 的文件已接收`
-          );
         }
       })
     );
@@ -131,7 +138,7 @@ export default function ToastContainer() {
     return () => {
       unlisteners.forEach((p) => p.then((fn) => fn()));
     };
-  }, [addToast, sendNativeNotification]);
+  }, [addToast]);
 
   if (toasts.length === 0) return null;
 

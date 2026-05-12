@@ -5,6 +5,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tauri::{AppHandle, Emitter, State};
 
+/// 与前端 DEFAULT_PROJECT_TYPES 一致的默认分类 JSON
+const DEFAULT_PROJECT_TYPES_JSON: &str = "[\
+  {\"id\":\"rd\",\"name\":\"研发\",\"prefix\":\"RD\",\"keywords\":[\"研发\",\"开发\",\"研发项目\",\"RD\"]},\
+  {\"id\":\"design\",\"name\":\"设计\",\"prefix\":\"DS\",\"keywords\":[\"设计\",\"UI\",\"UX\",\"DS\"]},\
+  {\"id\":\"ops\",\"name\":\"运营\",\"prefix\":\"OP\",\"keywords\":[\"运营\",\"推广\",\"活动\",\"OP\"]},\
+  {\"id\":\"construction\",\"name\":\"施工\",\"prefix\":\"CS\",\"keywords\":[\"施工\",\"工程\",\"建设\",\"CS\"]},\
+  {\"id\":\"other\",\"name\":\"其他\",\"prefix\":\"OT\",\"keywords\":[\"其他\",\"杂项\",\"OT\"]}\
+]";
+
 #[tauri::command]
 pub fn get_app_settings(db: State<'_, DbConn>) -> Result<AppSettings, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
@@ -67,8 +76,8 @@ pub fn update_app_settings(
 fn load_kanban_columns(conn: &rusqlite::Connection, project_id: i64) -> Result<Vec<KanbanColumn>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT c.id, c.project_id, c.title, c.position, c.created_at,
-                    card.id, card.column_id, card.title, card.description, card.position, card.tags, card.created_at, card.updated_at
+            "SELECT c.id, c.project_id, c.title, c.position, c.created_at, c.column_type,
+                    card.id, card.column_id, card.title, card.description, card.position, card.tags, card.created_at, card.updated_at, card.gantt_task_id, card.due_date
              FROM kanban_columns c
              LEFT JOIN kanban_cards card ON card.column_id = c.id
              WHERE c.project_id = ?1
@@ -86,23 +95,26 @@ fn load_kanban_columns(conn: &rusqlite::Connection, project_id: i64) -> Result<V
                 title: row.get(2)?,
                 position: row.get(3)?,
                 created_at: row.get(4)?,
+                column_type: row.get(5)?,
                 cards: Vec::new(),
             };
 
-            let card_id: Option<i64> = row.get(5)?;
+            let card_id: Option<i64> = row.get(6)?;
             let card = card_id.map(|cid| KanbanCard {
                 id: cid,
-                column_id: row.get(6).unwrap_or(col_id),
-                title: row.get(7).unwrap_or_default(),
-                description: row.get(8).ok(),
-                position: row.get(9).unwrap_or(0),
+                column_id: row.get(7).unwrap_or(col_id),
+                title: row.get(8).unwrap_or_default(),
+                description: row.get(9).ok(),
+                position: row.get(10).unwrap_or(0),
                 tags: row
-                    .get::<_, String>(10)
+                    .get::<_, String>(11)
                     .ok()
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default(),
-                created_at: row.get(11).unwrap_or_default(),
-                updated_at: row.get(12).unwrap_or_default(),
+                created_at: row.get(12).unwrap_or_default(),
+                updated_at: row.get(13).unwrap_or_default(),
+                gantt_task_id: row.get(14).ok(),
+                due_date: row.get(15).ok(),
             });
 
             Ok((col, card))
@@ -270,12 +282,14 @@ fn export_to_csv(export: &ProjectExport) -> Result<String, String> {
 
 /// 导入项目（支持完整 JSON 和简单项目 JSON）
 #[tauri::command]
-pub fn import_project(db: State<'_, DbConn>, file_path: String) -> Result<crate::db::models::Project, String> {
+pub fn import_project(app: AppHandle, db: State<'_, DbConn>, file_path: String) -> Result<crate::db::models::Project, String> {
     let content = std::fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
 
     // 尝试解析为完整导出格式
     if let Ok(export) = serde_json::from_str::<ProjectExport>(&content) {
-        return import_full_project(db, export);
+        let project = import_full_project(&app, db, export)?;
+        let _ = app.emit(crate::events::EVENT_PROJECT_UPDATED, project.id);
+        return Ok(project);
     }
 
     // 回退为简单项目格式
@@ -291,15 +305,28 @@ pub fn import_project(db: State<'_, DbConn>, file_path: String) -> Result<crate:
 
     let id = conn.last_insert_rowid();
 
-    conn.query_row(
+    // 自动创建看板默认列
+    conn.execute(
+        "INSERT INTO kanban_columns (project_id, title, position, column_type) VALUES (?1, '待办事项', 0, 'todo_pending')",
+        rusqlite::params![id],
+    ).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO kanban_columns (project_id, title, position, column_type) VALUES (?1, '已完成事项', 1, 'todo_done')",
+        rusqlite::params![id],
+    ).map_err(|e| e.to_string())?;
+
+    let imported = conn.query_row(
         &format!("SELECT {PROJECT_COLUMNS} FROM projects WHERE id = ?1"),
         [id],
         row_to_project,
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    let _ = app.emit(crate::events::EVENT_PROJECT_UPDATED, imported.id);
+    Ok(imported)
 }
 
-fn import_full_project(db: State<'_, DbConn>, export: ProjectExport) -> Result<crate::db::models::Project, String> {
+fn import_full_project(_app: &AppHandle, db: State<'_, DbConn>, export: ProjectExport) -> Result<crate::db::models::Project, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
 
     // 创建项目
@@ -314,8 +341,8 @@ fn import_full_project(db: State<'_, DbConn>, export: ProjectExport) -> Result<c
     // 导入看板列和卡片
     for col in &export.kanban_columns {
         conn.execute(
-            "INSERT INTO kanban_columns (project_id, title, position) VALUES (?1, ?2, ?3)",
-            rusqlite::params![new_project_id, col.title, col.position],
+            "INSERT INTO kanban_columns (project_id, title, position, column_type) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![new_project_id, col.title, col.position, col.column_type],
         )
         .map_err(|e| e.to_string())?;
 
@@ -324,8 +351,8 @@ fn import_full_project(db: State<'_, DbConn>, export: ProjectExport) -> Result<c
         for card in &col.cards {
             let tags_json = serde_json::to_string(&card.tags).unwrap_or_else(|_| "[]".to_string());
             conn.execute(
-                "INSERT INTO kanban_cards (column_id, title, description, position, tags) VALUES (?1, ?2, ?3, ?4, ?5)",
-                rusqlite::params![new_col_id, card.title, card.description, card.position, tags_json],
+                "INSERT INTO kanban_cards (column_id, title, description, position, tags, due_date, gantt_task_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![new_col_id, card.title, card.description, card.position, tags_json, card.due_date, card.gantt_task_id],
             )
             .map_err(|e| e.to_string())?;
         }
@@ -415,21 +442,22 @@ pub fn export_all_projects(db: State<'_, DbConn>) -> Result<String, String> {
 
 /// 从完整备份文件导入多个项目
 #[tauri::command]
-pub fn import_all_projects(db: State<'_, DbConn>, file_path: String) -> Result<Vec<crate::db::models::Project>, String> {
+pub fn import_all_projects(app: AppHandle, db: State<'_, DbConn>, file_path: String) -> Result<Vec<crate::db::models::Project>, String> {
     let content = std::fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
     let exports: Vec<ProjectExport> =
         serde_json::from_str(&content).map_err(|e| format!("无法解析备份文件: {e}"))?;
 
     let mut imported = Vec::new();
     for export in exports {
-        let project = import_full_project_internal(&db, export)?;
+        let project = import_full_project_internal(&app, &db, export)?;
+        let _ = app.emit(crate::events::EVENT_PROJECT_UPDATED, project.id);
         imported.push(project);
     }
 
     Ok(imported)
 }
 
-fn import_full_project_internal(db: &State<'_, DbConn>, export: ProjectExport) -> Result<crate::db::models::Project, String> {
+fn import_full_project_internal(_app: &AppHandle, db: &State<'_, DbConn>, export: ProjectExport) -> Result<crate::db::models::Project, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
 
     conn.execute(
@@ -442,8 +470,8 @@ fn import_full_project_internal(db: &State<'_, DbConn>, export: ProjectExport) -
 
     for col in &export.kanban_columns {
         conn.execute(
-            "INSERT INTO kanban_columns (project_id, title, position) VALUES (?1, ?2, ?3)",
-            rusqlite::params![new_project_id, col.title, col.position],
+            "INSERT INTO kanban_columns (project_id, title, position, column_type) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![new_project_id, col.title, col.position, col.column_type],
         )
         .map_err(|e| e.to_string())?;
 
@@ -452,8 +480,8 @@ fn import_full_project_internal(db: &State<'_, DbConn>, export: ProjectExport) -
         for card in &col.cards {
             let tags_json = serde_json::to_string(&card.tags).unwrap_or_else(|_| "[]".to_string());
             conn.execute(
-                "INSERT INTO kanban_cards (column_id, title, description, position, tags) VALUES (?1, ?2, ?3, ?4, ?5)",
-                rusqlite::params![new_col_id, card.title, card.description, card.position, tags_json],
+                "INSERT INTO kanban_cards (column_id, title, description, position, tags, due_date, gantt_task_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![new_col_id, card.title, card.description, card.position, tags_json, card.due_date, card.gantt_task_id],
             )
             .map_err(|e| e.to_string())?;
         }
@@ -504,7 +532,9 @@ pub fn global_search(db: State<'_, DbConn>, query: String) -> Result<Vec<SearchR
     }
 
     let conn = db.lock().map_err(|e| e.to_string())?;
-    let pattern = format!("%{}%", query.trim());
+    // 转义 LIKE 通配符，防止注入
+    let escaped = query.trim().replace('%', "\\%").replace('_', "\\_");
+    let pattern = format!("%{}%", escaped);
     let mut results = Vec::new();
 
     // 搜索项目
@@ -571,6 +601,33 @@ pub fn global_search(db: State<'_, DbConn>, query: String) -> Result<Vec<SearchR
             .query_map([&pattern], |row| {
                 Ok(SearchResult {
                     result_type: "task".to_string(),
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    detail: String::new(),
+                    project_id: row.get(3)?,
+                    project_name: row.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            results.push(row.map_err(|e| e.to_string())?);
+        }
+    }
+
+    // 搜索项目文件
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT f.id, f.original_name, '', f.project_id, p.name \
+                 FROM project_files f \
+                 JOIN projects p ON f.project_id = p.id \
+                 WHERE f.original_name LIKE ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([&pattern], |row| {
+                Ok(SearchResult {
+                    result_type: "file".to_string(),
                     id: row.get(0)?,
                     title: row.get(1)?,
                     detail: String::new(),
@@ -738,7 +795,6 @@ pub struct NotificationPreferences {
     pub file_received: bool,
     pub share_started: bool,
     pub share_stopped: bool,
-    pub native_notifications: bool,
 }
 
 impl Default for NotificationPreferences {
@@ -754,7 +810,6 @@ impl Default for NotificationPreferences {
             file_received: true,
             share_started: true,
             share_stopped: true,
-            native_notifications: true,
         }
     }
 }
@@ -946,7 +1001,7 @@ pub fn scan_project_folders(db: State<'_, DbConn>, parent_path: String) -> Resul
             [],
             |row| row.get(0),
         )
-        .unwrap_or_else(|_| "[]".to_string());
+        .unwrap_or_else(|_| DEFAULT_PROJECT_TYPES_JSON.to_string());
 
     let types: Vec<serde_json::Value> = serde_json::from_str(&types_json).unwrap_or_default();
 

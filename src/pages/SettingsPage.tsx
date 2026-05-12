@@ -1,4 +1,5 @@
 ﻿import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Sun,
   Moon,
@@ -30,7 +31,7 @@ import { useUserStore } from "@/stores/useUserStore";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { NotificationPreferences } from "@/types";
 import { DEFAULT_NOTIFICATION_PREFERENCES } from "@/types";
-import { exportApi, folderApi } from "@/lib/tauri-api";
+import { projectApi, exportApi, folderApi } from "@/lib/tauri-api";
 import Modal from "@/components/common/Modal";
 import type {
   ShortcutConfig,
@@ -74,12 +75,13 @@ const PRESET_EMOJIS = [
   "🎯", "🚀", "💎", "🎨",
 ];
 
-function ProfileSection() {
+function ProfileSection({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
   const { user, fetchUser, saveUser, uploadAvatar } = useUserStore();
   const { addToast } = useNotificationStore();
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     fetchUser();
@@ -89,11 +91,21 @@ function ProfileSection() {
     if (user) setName(user.name);
   }, [user]);
 
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  const handleNameChange = (value: string) => {
+    setName(value);
+    setDirty(value !== (user?.name || ""));
+  };
+
   const handleSave = async () => {
     if (!name.trim()) return;
     setSaving(true);
     try {
       await saveUser(name.trim(), user?.avatar_path);
+      setDirty(false);
       addToast({ type: "success", title: "用户资料已保存", message: "" });
     } catch (e) {
       addToast({ type: "error", title: "保存失败", message: String(e) });
@@ -135,7 +147,7 @@ function ProfileSection() {
       canvas.width = 128;
       canvas.height = 128;
       const ctx = canvas.getContext("2d")!;
-      ctx.fillStyle = "#221d17";
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg-surface").trim();
       ctx.fillRect(0, 0, 128, 128);
       ctx.font = "72px serif";
       ctx.textAlign = "center";
@@ -165,9 +177,20 @@ function ProfileSection() {
 
   return (
     <section className="animate-slide-up">
-      <h2 className="text-title mb-4" style={{ color: "var(--text-primary)" }}>
-        用户资料
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-title" style={{ color: "var(--text-primary)" }}>
+          用户资料
+        </h2>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={handleSave}
+          disabled={saving || !name.trim()}
+          style={{ opacity: saving || !name.trim() ? 0.5 : 1 }}
+        >
+          <Save size={13} strokeWidth={1.5} />
+          {saving ? "保存中..." : "保存"}
+        </button>
+      </div>
 
       {/* 头像 */}
       <div className="flex items-center gap-5 mb-4">
@@ -253,23 +276,13 @@ function ProfileSection() {
         <input
           type="text"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => handleNameChange(e.target.value)}
           placeholder="输入你的名称"
           className="w-full px-3 py-2 text-sm rounded-md outline-none font-mono"
           style={inputStyle}
           onKeyDown={(e) => e.key === "Enter" && handleSave()}
         />
       </div>
-
-      {/* 保存 */}
-      <button
-        className="btn btn-primary"
-        onClick={handleSave}
-        disabled={saving || !name.trim()}
-      >
-        <Save size={14} strokeWidth={1.5} />
-        {saving ? "保存中..." : "保存"}
-      </button>
     </section>
   );
 }
@@ -287,10 +300,9 @@ const PREF_LABELS: Record<keyof NotificationPreferences, { label: string; desc: 
   file_received: { label: "文件接收", desc: "局域网收到文件时通知" },
   share_started: { label: "共享开启", desc: "开启文件夹共享时通知" },
   share_stopped: { label: "共享停止", desc: "停止文件夹共享时通知" },
-  native_notifications: { label: "系统原生通知", desc: "同时发送操作系统通知（需授权）" },
 };
 
-function NotificationSection() {
+function NotificationSection({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
   const { preferences, fetchPreferences, savePreferences } = useNotificationStore();
   const { addToast } = useNotificationStore();
   const [localPrefs, setLocalPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
@@ -303,6 +315,10 @@ function NotificationSection() {
   useEffect(() => {
     setLocalPrefs(preferences);
   }, [preferences]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   const toggle = (key: keyof NotificationPreferences) => {
     setLocalPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -324,9 +340,26 @@ function NotificationSection() {
 
   return (
     <section className="animate-slide-up">
-      <h2 className="text-title mb-4" style={{ color: "var(--text-primary)" }}>
-        通知设置
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-title" style={{ color: "var(--text-primary)" }}>
+          通知设置
+        </h2>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost btn-sm" onClick={handleReset}>
+            <RotateCcw size={13} strokeWidth={1.5} />
+            恢复默认
+          </button>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={handleSave}
+            disabled={!dirty}
+            style={{ opacity: dirty ? 1 : 0.5 }}
+          >
+            <Save size={13} strokeWidth={1.5} />
+            保存
+          </button>
+        </div>
+      </div>
       <p className="text-xs mb-4" style={{ color: "var(--text-tertiary)" }}>
         控制哪些操作会弹出通知。关闭后通知仍会保存到历史记录中，但不会弹出 Toast 提示。
       </p>
@@ -374,22 +407,6 @@ function NotificationSection() {
             </button>
           );
         })}
-      </div>
-
-      <div className="flex items-center gap-3 pt-4" style={{ borderTop: "1px solid var(--border-default)" }}>
-        <button className="btn btn-ghost btn-sm" onClick={handleReset}>
-          <RotateCcw size={13} strokeWidth={1.5} />
-          恢复默认
-        </button>
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={handleSave}
-          disabled={!dirty}
-          style={{ opacity: dirty ? 1 : 0.5 }}
-        >
-          <Save size={13} strokeWidth={1.5} />
-          保存
-        </button>
       </div>
     </section>
   );
@@ -478,7 +495,7 @@ function AppearanceSection() {
 
 // ── 快捷键标签 ────────────────────────────────────────────────
 
-function ShortcutsSection() {
+function ShortcutsSection({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
   const { shortcuts, saveShortcuts, registerAllShortcuts } =
     useSettingsStore();
   const { addToast } = useNotificationStore();
@@ -489,6 +506,10 @@ function ShortcutsSection() {
   useEffect(() => {
     setEditing([...shortcuts]);
   }, [shortcuts]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   const handleRecordKey = useCallback(
     (index: number, e: React.KeyboardEvent) => {
@@ -714,9 +735,8 @@ function DataSection() {
 
   const handleExportSingle = async (format: "json" | "csv") => {
     try {
-      const projects = await import("@tauri-apps/api/core").then((m) =>
-        m.invoke<{ id: number; name: string }[]>("get_all_projects")
-      );
+      const allProjects = await projectApi.getAll();
+      const projects = allProjects.map(p => ({ id: p.id, name: p.name }));
 
       if (projects.length === 0) {
         addToast({
@@ -892,7 +912,6 @@ function FolderScanImport({ addToast }: { addToast: (t: { type: "info" | "succes
     setResults([]);
     try {
       const data = await folderApi.scanFolders(scanPath);
-      console.log("[handleScan] Scan results:", JSON.stringify(data, null, 2));
       setResults(data);
       addToast({ type: "success", title: "扫描完成", message: `发现 ${data.length} 个文件夹` });
     } catch (e) {
@@ -905,12 +924,10 @@ function FolderScanImport({ addToast }: { addToast: (t: { type: "info" | "succes
   const handleImport = async (folder: ScannedFolder) => {
     setImporting(folder.path);
     try {
-      const result = await folderApi.importFromFolder(folder);
-      console.log("[handleImport] Import result:", JSON.stringify(result, null, 2));
+      await folderApi.importFromFolder(folder);
       addToast({ type: "success", title: "导入成功", message: `已导入 "${folder.folder_name}"` });
       setResults((prev) => prev.filter((r) => r.path !== folder.path));
       await useProjectStore.getState().fetchProjects();
-      console.log("[handleImport] Store projects after refresh:", useProjectStore.getState().projects.length);
     } catch (e) {
       addToast({ type: "error", title: "导入失败", message: String(e) });
     } finally {
@@ -1020,7 +1037,7 @@ function FolderScanImport({ addToast }: { addToast: (t: { type: "info" | "succes
 
 // ── 项目配置标签 ──────────────────────────────────────────────
 
-function ProjectConfigSection() {
+function ProjectConfigSection({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void }) {
   const { settings, saveSettings } = useSettingsStore();
   const { addToast } = useNotificationStore();
 
@@ -1038,7 +1055,7 @@ function ProjectConfigSection() {
   );
   // 项目根目录
   const [projectRootPath, setProjectRootPath] = useState(
-    settings["project_root_path"] || ""
+    settings["default_project_path"] || ""
   );
 
   // 项目分类
@@ -1075,12 +1092,16 @@ function ProjectConfigSection() {
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypePrefix, setNewTypePrefix] = useState("");
 
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
   const handleSave = async () => {
     await saveSettings({
       number_template: numberTemplate,
       folder_template: folderTemplate,
       date_format: dateFormat,
-      project_root_path: projectRootPath,
+      default_project_path: projectRootPath,
       project_types: JSON.stringify(types),
       project_statuses: JSON.stringify(statuses),
       project_table_columns: JSON.stringify(columns),
@@ -1144,13 +1165,33 @@ function ProjectConfigSection() {
 
   return (
     <section className="animate-slide-up space-y-6">
-      {/* 编号模板 */}
+      {/* 保存/重置 */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-title" style={{ color: "var(--text-primary)" }}>
+          项目配置
+        </h2>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost btn-sm" onClick={handleReset}>
+            <RotateCcw size={13} strokeWidth={1.5} />
+            恢复默认
+          </button>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={handleSave}
+            disabled={!dirty}
+            style={{ opacity: dirty ? 1 : 0.5 }}
+          >
+            <Save size={13} strokeWidth={1.5} />
+            保存
+          </button>
+        </div>
+      </div>
       <div>
         <h2 className="text-title mb-2" style={{ color: "var(--text-primary)" }}>
           编号模板
         </h2>
         <p className="text-xs mb-3" style={{ color: "var(--text-tertiary)" }}>
-          支持变量：{"{prefix}"}（项目分类前缀）、{"{date}"}（日期）、{"{sequence}"}（当日序号）、{"{name}"}（项目名称）
+          支持变量：{"{prefix}"}（项目分类前缀）、{"{date}"}（日期）、{"{sequence}"}（当日序号）
         </p>
         <div className="flex items-center gap-3 mb-3">
           <input
@@ -1345,23 +1386,6 @@ function ProjectConfigSection() {
           ))}
         </div>
       </div>
-
-      {/* 保存/重置 */}
-      <div className="flex items-center gap-3 pt-4" style={{ borderTop: "1px solid var(--border-default)" }}>
-        <button className="btn btn-ghost btn-sm" onClick={handleReset}>
-          <RotateCcw size={13} strokeWidth={1.5} />
-          恢复默认
-        </button>
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={handleSave}
-          disabled={!dirty}
-          style={{ opacity: dirty ? 1 : 0.5 }}
-        >
-          <Save size={13} strokeWidth={1.5} />
-          保存
-        </button>
-      </div>
     </section>
   );
 }
@@ -1369,14 +1393,30 @@ function ProjectConfigSection() {
 // ── 设置页面主组件 ────────────────────────────────────────────
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<TabKey>("appearance");
-  const { fetchShortcuts, requestNotificationPermission } =
-    useSettingsStore();
+  const [searchParams] = useSearchParams();
+  const validTabs: TabKey[] = ["profile", "appearance", "notifications", "project", "shortcuts", "data"];
+  const initialTab = validTabs.includes(searchParams.get("tab") as TabKey) ? (searchParams.get("tab") as TabKey) : "appearance";
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
+  const [dirtyTabs, setDirtyTabs] = useState<Record<TabKey, boolean>>({
+    profile: false, appearance: false, notifications: false,
+    project: false, shortcuts: false, data: false,
+  });
+  const { fetchShortcuts } = useSettingsStore();
+
+  const handleTabChange = (key: TabKey) => {
+    if (dirtyTabs[activeTab]) {
+      if (!window.confirm("当前页有未保存的修改，是否放弃修改并切换？")) return;
+    }
+    setActiveTab(key);
+  };
+
+  const handleDirtyChange = (tab: TabKey, dirty: boolean) => {
+    setDirtyTabs((prev) => ({ ...prev, [tab]: dirty }));
+  };
 
   useEffect(() => {
     fetchShortcuts();
-    requestNotificationPermission();
-  }, [fetchShortcuts, requestNotificationPermission]);
+  }, [fetchShortcuts]);
 
   return (
     <div className="p-8 max-w-2xl">
@@ -1395,7 +1435,7 @@ export default function SettingsPage() {
         {tabs.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
-            onClick={() => setActiveTab(key)}
+            onClick={() => handleTabChange(key)}
             className="flex items-center gap-2 px-4 py-2 rounded-md text-xs transition-all flex-1 justify-center"
             style={{
               background:
@@ -1410,16 +1450,19 @@ export default function SettingsPage() {
           >
             <Icon size={14} strokeWidth={1.5} />
             {label}
+            {dirtyTabs[key] && (
+              <span className="w-2 h-2 rounded-full" style={{ background: "var(--gold)" }} />
+            )}
           </button>
         ))}
       </div>
 
       {/* 标签内容 */}
-      {activeTab === "profile" && <ProfileSection />}
+      {activeTab === "profile" && <ProfileSection onDirtyChange={(d) => handleDirtyChange("profile", d)} />}
       {activeTab === "appearance" && <AppearanceSection />}
-      {activeTab === "notifications" && <NotificationSection />}
-      {activeTab === "project" && <ProjectConfigSection />}
-      {activeTab === "shortcuts" && <ShortcutsSection />}
+      {activeTab === "notifications" && <NotificationSection onDirtyChange={(d) => handleDirtyChange("notifications", d)} />}
+      {activeTab === "project" && <ProjectConfigSection onDirtyChange={(d) => handleDirtyChange("project", d)} />}
+      {activeTab === "shortcuts" && <ShortcutsSection onDirtyChange={(d) => handleDirtyChange("shortcuts", d)} />}
       {activeTab === "data" && <DataSection />}
     </div>
   );

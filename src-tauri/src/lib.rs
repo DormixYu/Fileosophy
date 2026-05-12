@@ -21,7 +21,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
             // 初始化数据库
@@ -70,6 +69,9 @@ pub fn run() {
             commands::kanban::update_column,
             commands::kanban::delete_column,
             commands::kanban::delete_card,
+            commands::kanban::link_card_to_gantt,
+            commands::kanban::unlink_card_from_gantt,
+            commands::kanban::sync_gantt_to_kanban,
             // 甘特图
             commands::gantt::get_gantt_data,
             commands::gantt::add_gantt_task,
@@ -88,6 +90,7 @@ pub fn run() {
             commands::folder_share::start_folder_share,
             commands::folder_share::stop_folder_share,
             commands::folder_share::get_share_status,
+            commands::folder_share::get_connected_clients,
             commands::folder_share::join_shared_folder,
             commands::folder_share::list_remote_files,
             commands::folder_share::download_remote_file,
@@ -98,6 +101,9 @@ pub fn run() {
             // 状态历史 & 里程碑
             commands::projects::get_project_status_history,
             commands::projects::get_all_status_histories,
+            commands::projects::add_status_history,
+            commands::projects::update_status_history,
+            commands::projects::delete_status_history,
             commands::projects::add_project_milestone,
             commands::projects::update_project_milestone,
             commands::projects::delete_project_milestone,

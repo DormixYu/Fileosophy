@@ -17,7 +17,8 @@ interface KanbanStore {
   moveCard: (
     cardId: number,
     targetColumnId: number,
-    position: number
+    position: number,
+    projectId: number
   ) => Promise<void>;
   createCard: (data: CreateCardData) => Promise<void>;
   updateCard: (cardId: number, data: UpdateCardData) => Promise<void>;
@@ -56,19 +57,13 @@ export const useKanbanStore = create<KanbanStore>((set, get) => ({
   moveCard: async (
     cardId: number,
     targetColumnId: number,
-    position: number
+    position: number,
+    projectId: number
   ) => {
     try {
       await kanbanApi.moveCard(cardId, targetColumnId, position);
-      // 乐观更新：重新获取看板数据
-      const board = get().board;
-      if (board) {
-        const projectId = board.columns[0]?.project_id;
-        if (projectId) {
-          const updated = await kanbanApi.getBoard(projectId);
-          set({ board: updated });
-        }
-      }
+      const updated = await kanbanApi.getBoard(projectId);
+      set({ board: updated });
     } catch (e) {
       set({ error: String(e) });
     }

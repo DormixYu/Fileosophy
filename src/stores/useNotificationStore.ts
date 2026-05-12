@@ -10,21 +10,16 @@ export interface ToastItem {
   message: string;
   createdAt: number;
   link?: string;
+  prefKey?: keyof NotificationPreferences;
 }
 
-// 通知类型到偏好 key 的映射
+// 通知类型到偏好 key 的默认映射（仅在调用方未指定 prefKey 时使用）
 const TYPE_TO_PREF: Record<string, keyof NotificationPreferences> = {
-  "项目已创建": "project_created",
-  "项目已删除": "project_deleted",
-  "项目状态变更": "project_status_changed",
-  "新卡片": "card_created",
-  "卡片移动": "card_moved",
-  "文件已上传": "file_uploaded",
-  "文件已删除": "file_deleted",
-  "收到文件": "file_received",
-  "文件已接收": "file_received",
-  "共享已开启": "share_started",
-  "共享已停止": "share_stopped",
+  "info": "project_status_changed",
+  "success": "project_created",
+  "warning": "project_deleted",
+  "error": "project_deleted",
+  "file-received": "file_received",
 };
 
 interface NotificationState {
@@ -35,7 +30,7 @@ interface NotificationState {
   preferences: NotificationPreferences;
   preferencesLoaded: boolean;
 
-  addToast: (toast: Omit<ToastItem, "id" | "createdAt"> & { link?: string }) => void;
+  addToast: (toast: Omit<ToastItem, "id" | "createdAt"> & { link?: string; prefKey?: keyof NotificationPreferences }) => void;
   removeToast: (id: string) => void;
   clearAll: () => void;
 
@@ -59,11 +54,13 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   preferencesLoaded: false,
 
   addToast: (toast) => {
-    const { preferences, preferencesLoaded } = get();
+    const { preferences } = get();
 
-    // 检查偏好设置：若该类型被禁用则不弹 toast（但仍持久化）
-    const prefKey = TYPE_TO_PREF[toast.title];
-    const shouldShow = !preferencesLoaded || !prefKey || preferences[prefKey];
+    // 优先使用调用方指定的 prefKey，否则从 type 映射
+    const prefKey = toast.prefKey || TYPE_TO_PREF[toast.type];
+
+    // 若有 prefKey 且偏好关闭，则不弹 Toast
+    const shouldShow = !prefKey || preferences[prefKey];
 
     const id = `toast-${Date.now()}-${++nextId}`;
 
@@ -86,7 +83,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       }, 5000);
     }
 
-    // 持久化到后端（无论偏好如何都保存到历史）
+    // 持久化到后端历史（偏好关闭时仍记录，除非 prefKey 存在且偏好关闭）
     notificationHistoryApi
       .add({
         id,

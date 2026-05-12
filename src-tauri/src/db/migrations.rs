@@ -152,5 +152,30 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         }
     }
 
+    // ── 增量迁移：看板列/卡片新增字段 ────────────────────────────
+    let kanban_new_columns: &[(&str, &str, &str)] = &[
+        ("kanban_columns", "column_type", "ALTER TABLE kanban_columns ADD COLUMN column_type TEXT DEFAULT NULL"),
+        ("kanban_cards", "gantt_task_id", "ALTER TABLE kanban_cards ADD COLUMN gantt_task_id INTEGER DEFAULT NULL"),
+        ("kanban_cards", "due_date", "ALTER TABLE kanban_cards ADD COLUMN due_date TEXT DEFAULT NULL"),
+    ];
+
+    for (table, col, alter_sql) in kanban_new_columns {
+        if !column_exists(conn, table, col)? {
+            conn.execute_batch(alter_sql)?;
+        }
+    }
+
+    // ── 增量迁移：默认项目路径设置 ────────────────────────────────
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('default_project_path', '');"
+    )?;
+
+    // ── 增量迁移：合并旧 key project_root_path → default_project_path ──
+    conn.execute_batch(
+        "INSERT OR IGNORE INTO settings (key, value)
+         SELECT 'default_project_path', value FROM settings WHERE key = 'project_root_path' AND value != '';
+         DELETE FROM settings WHERE key = 'project_root_path';"
+    )?;
+
     Ok(())
 }

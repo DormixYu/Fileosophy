@@ -5,6 +5,10 @@ import { useProjectStore } from "@/stores/useProjectStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import Modal from "@/components/common/Modal";
 import FileExplorer from "@/components/files/FileExplorer";
+import FilePanel from "@/components/files/FilePanel";
+import Spinner from "@/components/common/Spinner";
+import KanbanBoard from "@/components/kanban/KanbanBoard";
+import GanttChart from "@/components/gantt/GanttChart";
 import type { ProjectStatusConfig } from "@/types";
 import { DEFAULT_PROJECT_STATUSES } from "@/types";
 
@@ -12,7 +16,7 @@ export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const projectId = Number(id);
-  const { currentProject, fetchProjectById, clearCurrentProject, updateProject, loading } =
+  const { currentProject, fetchProjectById, updateProject, loading } =
     useProjectStore();
   const { settings } = useSettingsStore();
 
@@ -28,11 +32,14 @@ export default function ProjectDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [activeView, setActiveView] = useState<"detail" | "kanban" | "gantt">("detail");
 
   useEffect(() => {
     if (projectId) fetchProjectById(projectId);
-    return () => clearCurrentProject();
-  }, [projectId, fetchProjectById, clearCurrentProject]);
+    return () => {
+      // 仅组件卸载时清理，避免项目间切换时闪烁
+    };
+  }, [projectId, fetchProjectById]);
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return "—";
@@ -58,11 +65,8 @@ export default function ProjectDetailPage() {
 
   if (loading) {
     return (
-      <div
-        className="flex items-center justify-center h-full text-sm"
-        style={{ color: "var(--text-muted)" }}
-      >
-        加载中…
+      <div className="flex items-center justify-center h-full">
+        <Spinner />
       </div>
     );
   }
@@ -124,8 +128,34 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* 内容区：项目信息 + 文件列表 */}
-      <div className="flex-1 overflow-auto p-6 space-y-6">
+      {/* 视图切换 Tab */}
+      <div
+        className="flex items-center gap-1 px-6 h-10 shrink-0 border-b"
+        style={{ background: "var(--bg-surface)", borderColor: "var(--border-light)" }}
+      >
+        {([
+          { key: "detail", label: "项目详情" },
+          { key: "kanban", label: "项目看板" },
+          { key: "gantt", label: "项目甘特图" },
+        ] as const).map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveView(tab.key)}
+            className="px-3 py-1.5 text-xs rounded-md transition-all"
+            style={{
+              color: activeView === tab.key ? "var(--gold)" : "var(--text-muted)",
+              background: activeView === tab.key ? "var(--gold-glow)" : "transparent",
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 内容区 */}
+      <div className="flex-1 overflow-auto">
+        {activeView === "detail" && (
+          <div className="p-6 space-y-6">
         {/* 项目信息卡片 */}
         <div
           className="rounded-lg p-5"
@@ -247,8 +277,22 @@ export default function ProjectDetailPage() {
             <FolderOpen size={16} strokeWidth={1.5} />
             项目文件
           </h2>
-          <FileExplorer projectId={projectId} folderPath={currentProject?.folder_path} />
+          {currentProject?.folder_path
+            ? <FileExplorer folderPath={currentProject.folder_path} />
+            : <FilePanel projectId={projectId} />}
         </div>
+          </div>
+        )}
+        {activeView === "kanban" && (
+          <div className="p-6">
+            <KanbanBoard projectId={projectId} />
+          </div>
+        )}
+        {activeView === "gantt" && (
+          <div className="p-6">
+            <GanttChart projectId={projectId} />
+          </div>
+        )}
       </div>
 
       {/* 编辑项目 Modal */}

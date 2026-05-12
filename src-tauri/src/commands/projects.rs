@@ -6,6 +6,15 @@ use crate::events;
 
 pub type DbConn = Mutex<rusqlite::Connection>;
 
+/// 与前端 DEFAULT_PROJECT_TYPES 一致的默认分类 JSON
+const DEFAULT_PROJECT_TYPES_JSON: &str = "[\
+  {\"id\":\"rd\",\"name\":\"研发\",\"prefix\":\"RD\",\"keywords\":[\"研发\",\"开发\",\"研发项目\",\"RD\"]},\
+  {\"id\":\"design\",\"name\":\"设计\",\"prefix\":\"DS\",\"keywords\":[\"设计\",\"UI\",\"UX\",\"DS\"]},\
+  {\"id\":\"ops\",\"name\":\"运营\",\"prefix\":\"OP\",\"keywords\":[\"运营\",\"推广\",\"活动\",\"OP\"]},\
+  {\"id\":\"construction\",\"name\":\"施工\",\"prefix\":\"CS\",\"keywords\":[\"施工\",\"工程\",\"建设\",\"CS\"]},\
+  {\"id\":\"other\",\"name\":\"其他\",\"prefix\":\"OT\",\"keywords\":[\"其他\",\"杂项\",\"OT\"]}\
+]";
+
 /// 从 settings 表读取文件夹模板，生成项目文件夹名
 pub fn generate_folder_name(conn: &rusqlite::Connection, project_number: &str, name: &str) -> String {
     let template: String = conn
@@ -84,7 +93,7 @@ pub fn generate_project_number(conn: &rusqlite::Connection, project_type: &str, 
             [],
             |row| row.get(0),
         )
-        .unwrap_or_else(|_| "{prefix}-{date}-{sequence} {name}".to_string());
+        .unwrap_or_else(|_| "{prefix}-{date}-{sequence}".to_string());
 
     // 读取分类前缀
     let prefix: String = if !project_type.is_empty() {
@@ -94,7 +103,7 @@ pub fn generate_project_number(conn: &rusqlite::Connection, project_type: &str, 
                 [],
                 |row| row.get(0),
             )
-            .unwrap_or_else(|_| "[]".to_string());
+            .unwrap_or_else(|_| DEFAULT_PROJECT_TYPES_JSON.to_string());
 
         serde_json::from_str::<Vec<serde_json::Value>>(&types_json)
             .unwrap_or_default()
@@ -124,16 +133,17 @@ pub fn generate_project_number(conn: &rusqlite::Connection, project_type: &str, 
     };
 
     // 流水号：当日同前缀的项目计数 + 1
-    let pattern = format!("{}-{}%", prefix, date_str);
+    let safe_prefix = prefix.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    let pattern = format!("{}-{}%", safe_prefix, date_str);
     let count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM projects WHERE project_number LIKE ?1",
+            "SELECT COUNT(*) FROM projects WHERE project_number LIKE ?1 ESCAPE '\\'",
             [&pattern],
             |row| row.get(0),
         )
         .unwrap_or(0);
 
-    let sequence = format!("{:03}", count + 1);
+    let sequence = format!("{:02}", count + 1);
 
     // 替换模板变量
     template
@@ -168,13 +178,22 @@ pub fn create_project(
     let p_type = project_type.unwrap_or_default();
     let p_status = status.unwrap_or_else(|| "planning".to_string());
     let p_created_by = created_by.unwrap_or_else(get_system_username);
-    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
     // 自动生成项目编号
     let project_number = generate_project_number(&conn, &p_type, &name);
 
-    // 如果提供了父路径，生成文件夹名并创建目录
-    let folder_path = if let Some(ref parent) = parent_path {
+    // 如果未提供 parent_path，尝试从设置读取默认路径
+    let resolved_parent = parent_path.or_else(|| {
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = 'default_project_path'",
+            [],
+            |row| row.get::<_, String>(0),
+        ).ok().filter(|p| !p.is_empty())
+    });
+
+    // 如果有路径，生成文件夹名并创建目录
+    let folder_path = if let Some(ref parent) = resolved_parent {
         let folder_name = generate_folder_name(&conn, &project_number, &name);
         let full_path = std::path::Path::new(parent).join(&folder_name);
         std::fs::create_dir_all(&full_path).map_err(|e| format!("创建文件夹失败: {e}"))?;
@@ -191,6 +210,16 @@ pub fn create_project(
     .map_err(|e| e.to_string())?;
 
     let id = conn.last_insert_rowid();
+
+    // 自动创建看板默认列：待办事项 + 已完成事项
+    conn.execute(
+        "INSERT INTO kanban_columns (project_id, title, position, column_type) VALUES (?1, '待办事项', 0, 'todo_pending')",
+        rusqlite::params![id],
+    ).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO kanban_columns (project_id, title, position, column_type) VALUES (?1, '已完成事项', 1, 'todo_done')",
+        rusqlite::params![id],
+    ).map_err(|e| e.to_string())?;
 
     conn.query_row(
         &format!("SELECT {PROJECT_COLUMNS} FROM projects WHERE id = ?1"),
@@ -237,6 +266,47 @@ pub fn update_project(
         sets.push(format!("project_type = ?{idx}"));
         params.push(Box::new(pt.clone()));
         idx += 1;
+
+        // 项目分类变更时，同步更新编号前缀
+        let old_type: Option<String> = conn.query_row(
+            "SELECT project_type FROM projects WHERE id = ?1",
+            [id],
+            |row| row.get::<_, Option<String>>(0),
+        ).ok().flatten();
+
+        if old_type.as_deref() != Some(pt.as_str()) {
+            let types_json: String = conn.query_row(
+                "SELECT value FROM settings WHERE key = 'project_types'",
+                [],
+                |row| row.get(0),
+            ).unwrap_or_else(|_| DEFAULT_PROJECT_TYPES_JSON.to_string());
+
+            let types: Vec<serde_json::Value> = serde_json::from_str(&types_json).unwrap_or_default();
+
+            let old_prefix = old_type.as_ref().and_then(|t| {
+                types.iter()
+                    .find(|v| v.get("name").and_then(|v| v.as_str()) == Some(t.as_str()))
+                    .and_then(|v| v.get("prefix").and_then(|v| v.as_str()))
+            }).unwrap_or("PRJ");
+
+            let new_prefix = types.iter()
+                .find(|v| v.get("name").and_then(|v| v.as_str()) == Some(pt.as_str()))
+                .and_then(|v| v.get("prefix").and_then(|v| v.as_str()))
+                .unwrap_or("PRJ");
+
+            let old_number: String = conn.query_row(
+                "SELECT COALESCE(project_number, '') FROM projects WHERE id = ?1",
+                [id],
+                |row| row.get::<_, String>(0),
+            ).unwrap_or_default();
+
+            if !old_number.is_empty() && old_number.starts_with(old_prefix) {
+                let new_number = old_number.replacen(old_prefix, new_prefix, 1);
+                sets.push(format!("project_number = ?{idx}"));
+                params.push(Box::new(new_number));
+                idx += 1;
+            }
+        }
     }
     // 状态变更时记录历史
     let old_status: Option<String> = if status.is_some() {
@@ -370,6 +440,18 @@ pub fn open_folder(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn open_file(path: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Err("文件或文件夹不存在".to_string());
+    }
+    // 禁止含 shell 元字符的路径（防止命令注入）
+    if path.contains('&') || path.contains('|') || path.contains(';')
+        || path.contains('^') || path.contains('%') || path.contains('<')
+        || path.contains('>') || path.contains('(') || path.contains(')')
+        || path.contains('!')
+    {
+        return Err("路径包含非法字符".to_string());
+    }
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
@@ -452,6 +534,69 @@ pub fn get_all_status_histories(
         result.push(row.map_err(|e| e.to_string())?);
     }
     Ok(result)
+}
+
+// ── 状态历史 CRUD ────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn add_status_history(
+    app: AppHandle,
+    db: State<'_, DbConn>,
+    project_id: i64,
+    status: String,
+    changed_at: String,
+) -> Result<ProjectStatusHistory, String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO project_status_history (project_id, status, changed_at) VALUES (?1, ?2, ?3)",
+        rusqlite::params![project_id, status, changed_at],
+    ).map_err(|e| e.to_string())?;
+    let id = conn.last_insert_rowid();
+    let result = ProjectStatusHistory { id, project_id, status, changed_at };
+    let _ = app.emit(events::EVENT_PROJECT_UPDATED, project_id);
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn update_status_history(
+    app: AppHandle,
+    db: State<'_, DbConn>,
+    id: i64,
+    status: String,
+    changed_at: String,
+) -> Result<ProjectStatusHistory, String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE project_status_history SET status = ?1, changed_at = ?2 WHERE id = ?3",
+        rusqlite::params![status, changed_at, id],
+    ).map_err(|e| e.to_string())?;
+    let result = conn.query_row(
+        "SELECT id, project_id, status, changed_at FROM project_status_history WHERE id = ?1",
+        [id], row_to_status_history,
+    ).map_err(|e| e.to_string())?;
+    let _ = app.emit(events::EVENT_PROJECT_UPDATED, result.project_id);
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn delete_status_history(
+    app: AppHandle,
+    db: State<'_, DbConn>,
+    id: i64,
+) -> Result<(), String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    // 先查询 project_id，删除后 emit
+    let project_id: i64 = conn.query_row(
+        "SELECT project_id FROM project_status_history WHERE id = ?1",
+        [id],
+        |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM project_status_history WHERE id = ?1",
+        [id],
+    ).map_err(|e| e.to_string())?;
+    let _ = app.emit(events::EVENT_PROJECT_UPDATED, project_id);
+    Ok(())
 }
 
 // ── 里程碑 ─────────────────────────────────────────────────────

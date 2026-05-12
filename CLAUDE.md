@@ -78,6 +78,14 @@ npm run tauri dev
 # 前端类型检查
 npx tsc --noEmit
 
+# 前端 Lint
+npm run lint
+npm run lint:fix
+
+# 前端格式化
+npm run format
+npm run format:check
+
 # 生产构建
 npm run tauri build
 
@@ -103,12 +111,11 @@ cd src-tauri && cargo test
 | 构建工具 | Vite |
 | 样式 | Tailwind CSS（暖色调/羊皮纸质感） |
 | 状态管理 | Zustand（按领域拆分 store） |
-| 拖拽 | @dnd-kit/core（看板卡片拖拽） |
+| 拖拽 | @dnd-kit/core + @dnd-kit/sortable（看板卡片拖拽） |
 | 后端语言 | Rust 2021 edition |
 | 数据库 | SQLite（rusqlite bundled） |
 | 网络发现 | mdns-sd crate（局域网 mDNS） |
 | 快捷键 | tauri-plugin-global-shortcut |
-| 系统通知 | tauri-plugin-notification |
 | 文件对话框 | tauri-plugin-dialog |
 | 文件系统 | tauri-plugin-fs（读取本地文件） |
 
@@ -120,17 +127,18 @@ cd src-tauri && cargo test
 
 ## 通知系统
 
-三层架构：
+两层架构：
 1. **Toast 弹窗**：`useNotificationStore.addToast()` → 前端即时弹出（5 秒自动消失），同时持久化到后端
 2. **通知历史**：存储在 `settings` 表 `notification_history` key（JSON 数组），通过 `NotificationCenter` 面板查看
-3. **系统原生通知**：`tauri-plugin-notification`，仅在后端事件到达时触发
 
 后端通过 `events::emit_notification(app, type, title, message, link)` 发送通知事件，前端 `ToastContainer` 监听 `app-notification` 事件。通知支持可选 `link` 字段，点击可跳转到对应路由。通知偏好存储在 `settings` 表 `notification_preferences` key。
+
+注意：`@tauri-apps/plugin-notification` JS 包已安装但 Rust 后端尚未集成（Cargo.toml 无依赖，lib.rs 无注册），系统原生通知暂不可用。
 
 ## 后端架构（`src-tauri/src/`）
 
 - `main.rs` — 入口，调用 `fileosophy_lib::run()`
-- `lib.rs` — `run()` 函数：注册 Tauri 插件（dialog、shell、notification、global-shortcut），初始化数据库连接（`Mutex<Connection>`），启动文件传输 TCP 服务器，注册 mDNS 服务发现，注册所有 IPC 命令
+- `lib.rs` — `run()` 函数：注册 Tauri 插件（dialog、fs、shell、global-shortcut），初始化数据库连接（`Mutex<Connection>`），启动文件传输 TCP 服务器，注册 mDNS 服务发现，注册所有 IPC 命令
 - `commands/` — Tauri `#[tauri::command]`，按领域拆分：
   - `projects.rs` — 项目 CRUD、状态历史、里程碑管理、打开文件夹/文件、获取本机 IP，定义 `DbConn` 类型别名
   - `kanban.rs` — 看板列和卡片操作
@@ -165,17 +173,20 @@ cd src-tauri && cargo test
   - `/` → DashboardPage（概览统计）
   - `/projects` → ProjectListPage（项目列表）
   - `/project/:id` → ProjectDetailPage（看板/甘特图/文件切换）
-  - `/gantt/:id` → GanttPage（独立甘特图视图）
+  - `/gantt` → GanttPage（全局甘特图，跨项目任务汇总）
+  - `/sharing` → SharingPage（局域网共享管理，含我的分享/连接他人/远程文件浏览）
   - `/settings` → SettingsPage（主题、快捷键、数据管理）
   - 全局快捷键：`Ctrl+Shift+N` 快速新建、`Ctrl+Shift+F` 全局搜索、`Ctrl+Shift+S` 显示/隐藏窗口
 - `lib/tauri-api.ts` — 所有后端 IPC 调用封装，按领域分对象导出（`projectApi`、`kanbanApi`、`ganttApi`、`fileApi`、`settingsApi`、`exportApi`、`shortcutApi`、`notificationApi`）。除此之外任何地方不得裸调 `invoke`
-- `stores/` — Zustand 按领域拆分：`useProjectStore`、`useKanbanStore`、`useGanttStore`、`useSettingsStore`、`useNotificationStore`（含 Toast + 历史 + 偏好）、`useUserStore`
+- `lib/ganttUtils.ts` — 甘特图工具函数（视图模式、日期计算、格式化等）
+- `stores/` — Zustand 按领域拆分：`useProjectStore`、`useKanbanStore`、`useGanttStore`、`useSettingsStore`、`useNotificationStore`（含 Toast + 历史 + 偏好）、`useUserStore`、`useShareStore`
 - `components/` — UI 组件，按功能分目录：
   - `kanban/` — Board / Column / Card，使用 @dnd-kit 拖拽
   - `gantt/` — GanttChart 甘特图组件
   - `files/` — FilePanel（完整版文件管理）、FileExplorer（文件夹树浏览 + 数据库文件列表双模式）、FilePreviewModal（预览弹窗）、`previews/`（TextPreview / ImagePreview / MarkdownPreview）
   - `notifications/` — NotificationCenter、ToastContainer
-  - `common/` — Modal、Dropdown、Spinner、EmptyState、QuickAddPanel（快速新建）、GlobalSearch（全局搜索）、ShareProjectDialog（项目分享）
+  - `sharing/` — MyShares、ConnectShare、ActiveShareRow、ConnectedPeerRow、RemoteFileBrowser
+  - `common/` — Modal、Dropdown、Spinner、EmptyState、QuickAddPanel（快速新建）、GlobalSearch（全局搜索）、ShareProjectDialog（项目分享）、DatePicker
 - `types/index.ts` — 所有 TypeScript 接口，与 Rust 模型一一对应，含事件载荷类型
 - 路径别名 `@/` → `src/`（在 `vite.config.ts` 和 `tsconfig.json` 中配置）
 

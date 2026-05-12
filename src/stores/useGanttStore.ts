@@ -12,7 +12,7 @@ interface GanttStore {
   error: string | null;
 
   fetchTasks: (projectId: number) => Promise<void>;
-  addTask: (data: CreateGanttTaskData) => Promise<void>;
+  addTask: (data: CreateGanttTaskData) => Promise<GanttTask | null>;
   updateTask: (id: number, data: UpdateGanttTaskData) => Promise<void>;
   deleteTask: (id: number) => Promise<void>;
 }
@@ -36,8 +36,10 @@ export const useGanttStore = create<GanttStore>((set, get) => ({
     try {
       const task = await ganttApi.addTask(data);
       set({ tasks: [...get().tasks, task] });
+      return task;
     } catch (e) {
       set({ error: String(e) });
+      return null;
     }
   },
 

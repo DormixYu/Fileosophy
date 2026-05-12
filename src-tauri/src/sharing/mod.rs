@@ -9,6 +9,9 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::events;
 
+/// TCP 帧最大大小（10MB），防止恶意超大帧导致内存耗尽
+const MAX_FRAME_SIZE: usize = 10 * 1024 * 1024;
+
 /// 文件传输协议头部，通过 JSON 序列化后以 4 字节长度前缀发送
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransferHeader {
@@ -97,6 +100,9 @@ fn handle_incoming(mut stream: TcpStream, app_handle: AppHandle) -> Result<(), S
         .read_exact(&mut len_buf)
         .map_err(|e| format!("读取头部长度失败: {e}"))?;
     let header_len = u32::from_be_bytes(len_buf) as usize;
+    if header_len > MAX_FRAME_SIZE {
+        return Err(format!("帧大小超限: {header_len} > {MAX_FRAME_SIZE}"));
+    }
 
     // 读取 JSON 头部
     let mut header_buf = vec![0u8; header_len];
@@ -120,15 +126,12 @@ fn handle_incoming(mut stream: TcpStream, app_handle: AppHandle) -> Result<(), S
 
     while remaining > 0 {
         let to_read = std::cmp::min(remaining, buf.len() as u64) as usize;
-        let bytes_read = stream
-            .read(&mut buf[..to_read])
+        stream
+            .read_exact(&mut buf[..to_read])
             .map_err(|e| format!("读取文件数据失败: {e}"))?;
-        if bytes_read == 0 {
-            break;
-        }
-        file.write_all(&buf[..bytes_read])
+        file.write_all(&buf[..to_read])
             .map_err(|e| format!("写入文件失败: {e}"))?;
-        remaining -= bytes_read as u64;
+        remaining -= to_read as u64;
     }
 
     log::info!(

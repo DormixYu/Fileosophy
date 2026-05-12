@@ -4,6 +4,8 @@ import type {
   CreateProjectData,
   UpdateProjectData,
   ProjectStatusHistory,
+  CreateStatusHistoryData,
+  UpdateStatusHistoryData,
   ProjectMilestone,
   CreateMilestoneData,
   UpdateMilestoneData,
@@ -22,9 +24,12 @@ import type {
   Peer,
   Notification,
   SearchResult,
+  LinkCardToGanttResult,
   ScannedFolder,
   User,
   FolderEntry,
+  ClientInfo,
+  RemoteDirEntry,
 } from "@/types";
 
 // ── 项目管理 ──────────────────────────────────────────────────
@@ -70,6 +75,19 @@ export const projectApi = {
   getAllStatusHistories: () =>
     invoke<ProjectStatusHistory[]>("get_all_status_histories"),
 
+  addStatusHistory: (data: CreateStatusHistoryData) =>
+    invoke<ProjectStatusHistory>("add_status_history", {
+      projectId: data.project_id, status: data.status, changedAt: data.changed_at,
+    }),
+
+  updateStatusHistory: (id: number, data: UpdateStatusHistoryData) =>
+    invoke<ProjectStatusHistory>("update_status_history", {
+      id, status: data.status, changedAt: data.changed_at,
+    }),
+
+  deleteStatusHistory: (id: number) =>
+    invoke<void>("delete_status_history", { id }),
+
   // 里程碑
   addMilestone: (data: CreateMilestoneData) =>
     invoke<ProjectMilestone>("add_project_milestone", {
@@ -107,6 +125,7 @@ export const kanbanApi = {
     invoke<KanbanColumn>("add_column", {
       projectId: data.project_id,
       title: data.title,
+      columnType: data.column_type ?? null,
     }),
 
   moveCard: (cardId: number, targetColumnId: number, position: number) =>
@@ -117,6 +136,8 @@ export const kanbanApi = {
       columnId: data.column_id,
       title: data.title,
       description: data.description ?? null,
+      dueDate: data.due_date ?? null,
+      ganttTaskId: data.gantt_task_id ?? null,
     }),
 
   updateCard: (cardId: number, data: UpdateCardData) =>
@@ -125,15 +146,26 @@ export const kanbanApi = {
       title: data.title ?? null,
       description: data.description ?? null,
       tags: data.tags ?? null,
+      dueDate: data.due_date ?? null,
+      ganttTaskId: data.gantt_task_id ?? null,
     }),
 
-  updateColumn: (columnId: number, title: string) =>
-    invoke<KanbanColumn>("update_column", { columnId, title }),
+  updateColumn: (columnId: number, title: string, columnType?: string | null) =>
+    invoke<KanbanColumn>("update_column", { columnId, title, columnType: columnType ?? null }),
 
   deleteColumn: (columnId: number) =>
     invoke<void>("delete_column", { columnId }),
 
   deleteCard: (cardId: number) => invoke<void>("delete_card", { cardId }),
+
+  linkCardToGantt: (cardId: number, name: string, startDate: string, durationDays: number) =>
+    invoke<LinkCardToGanttResult>("link_card_to_gantt", { cardId, taskName: name, startDate, durationDays }),
+
+  unlinkCardFromGantt: (cardId: number) =>
+    invoke<KanbanCard>("unlink_card_from_gantt", { cardId }),
+
+  syncGanttToKanban: (taskId: number) =>
+    invoke<KanbanCard>("sync_gantt_to_kanban", { taskId }),
 };
 
 // ── 甘特图 ────────────────────────────────────────────────────
@@ -258,7 +290,9 @@ export const folderApi = {
 
   /** 从文件夹导入为新项目 */
   importFromFolder: (folder: ScannedFolder) => {
-    const parentPath = folder.path.substring(0, folder.path.lastIndexOf("/")) || folder.path.substring(0, folder.path.lastIndexOf("\\"));
+    const sep = folder.path.includes("\\") ? "\\" : "/";
+    const lastSep = folder.path.lastIndexOf(sep);
+    const parentPath = lastSep >= 0 ? folder.path.substring(0, lastSep) : "";
     const args = {
       parentPath,
       folderName: folder.folder_name,
@@ -268,12 +302,7 @@ export const folderApi = {
       startDate: folder.inferred_date || null,
       endDate: folder.inferred_end_date || null,
     };
-    console.log("[importFromFolder] ScannedFolder:", JSON.stringify(folder, null, 2));
-    console.log("[importFromFolder] IPC args:", JSON.stringify(args, null, 2));
-    return invoke<Project>("import_project_from_folder", args).then((project) => {
-      console.log("[importFromFolder] Returned project:", JSON.stringify(project, null, 2));
-      return project;
-    });
+    return invoke<Project>("import_project_from_folder", args);
   },
 };
 
@@ -306,11 +335,13 @@ export const shareApi = {
 
   getStatus: () => invoke<{ port: number; path: string } | null>("get_share_status"),
 
+  getConnectedClients: () => invoke<ClientInfo[]>("get_connected_clients"),
+
   join: (addr: string, password: string) =>
     invoke<string>("join_shared_folder", { addr, password }),
 
   listRemote: (addr: string, password: string, path: string) =>
-    invoke<{ name: string; is_dir: boolean; size: number }[]>("list_remote_files", { addr, password, path }),
+    invoke<RemoteDirEntry[]>("list_remote_files", { addr, password, path }),
 
   downloadRemote: (addr: string, password: string, remotePath: string, localPath: string) =>
     invoke<void>("download_remote_file", { addr, password, remotePath, localPath }),
@@ -337,21 +368,3 @@ export const userApi = {
     invoke<string>("upload_avatar", { imageData }),
 };
 
-// ── 系统通知 ──────────────────────────────────────────────────
-
-export const notificationApi = {
-  requestPermission: () =>
-    import("@tauri-apps/plugin-notification").then((m) =>
-      m.requestPermission()
-    ),
-
-  isPermissionGranted: () =>
-    import("@tauri-apps/plugin-notification").then((m) =>
-      m.isPermissionGranted()
-    ),
-
-  sendNotification: (options: { title: string; body: string }) =>
-    import("@tauri-apps/plugin-notification").then((m) =>
-      m.sendNotification(options)
-    ),
-};

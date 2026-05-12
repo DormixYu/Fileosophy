@@ -16,6 +16,8 @@ import {
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { projectApi, shareApi } from "@/lib/tauri-api";
+import { getToday } from "@/lib/ganttUtils";
+import DatePicker from "@/components/common/DatePicker";
 import ShareProjectDialog from "@/components/common/ShareProjectDialog";
 import JoinShareDialog from "@/components/common/JoinShareDialog";
 import type {
@@ -39,7 +41,7 @@ interface SortState {
 }
 
 export default function ProjectListPage() {
-  const { projects, fetchProjects, createProject, updateProject, deleteProject, loading } =
+  const { projects, fetchProjects, createProject, updateProject, deleteProject, loading, consumeCreateProject, pendingCreateProject } =
     useProjectStore();
   const { settings } = useSettingsStore();
 
@@ -62,6 +64,14 @@ export default function ProjectListPage() {
     fetchProjects();
     refreshShareStatus();
   }, [fetchProjects, refreshShareStatus]);
+
+  // 检测快捷键触发的创建请求
+  useEffect(() => {
+    if (pendingCreateProject) {
+      consumeCreateProject();
+      setShowCreate(true);
+    }
+  }, [pendingCreateProject, consumeCreateProject]);
 
   // 从设置中读取项目状态配置
   const statuses: ProjectStatusConfig[] = useMemo(() => {
@@ -890,13 +900,16 @@ interface ProjectDialogProps {
 }
 
 function ProjectDialog({ title, project, types, statuses, onClose, onSubmit }: ProjectDialogProps) {
+  const { settings } = useSettingsStore();
   const [name, setName] = useState(project?.name ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
   const [projectType, setProjectType] = useState(project?.project_type ?? "");
   const [status, setStatus] = useState(project?.status ?? "planning");
-  const [startDate, setStartDate] = useState(project?.start_date?.slice(0, 10) ?? "");
+  const [startDate, setStartDate] = useState(project?.start_date?.slice(0, 10) ?? getToday());
   const [endDate, setEndDate] = useState(project?.end_date?.slice(0, 10) ?? "");
-  const [parentPath, setParentPath] = useState("");
+  const [parentPath, setParentPath] = useState(
+    project ? (project.folder_path || "") : (settings["default_project_path"] || "")
+  );
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
@@ -1016,25 +1029,13 @@ function ProjectDialog({ title, project, types, statuses, onClose, onSubmit }: P
               <label className="text-[11px] mb-1 block" style={{ color: "var(--text-muted)" }}>
                 开始日期
               </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded-md outline-none"
-                style={inputStyle}
-              />
+              <DatePicker value={startDate} onChange={setStartDate} style={inputStyle} />
             </div>
             <div>
               <label className="text-[11px] mb-1 block" style={{ color: "var(--text-muted)" }}>
                 截止日期
               </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm rounded-md outline-none"
-                style={inputStyle}
-              />
+              <DatePicker value={endDate} onChange={setEndDate} style={inputStyle} />
             </div>
           </div>
 

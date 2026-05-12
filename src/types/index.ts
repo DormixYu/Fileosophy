@@ -96,7 +96,7 @@ export const DEFAULT_PROJECT_TABLE_COLUMNS: ProjectTableColumn[] = [
 
 // ── 编号模板 ──────────────────────────────────────────────────
 
-export const DEFAULT_NUMBER_TEMPLATE = "{prefix}-{date}-{sequence} {name}";
+export const DEFAULT_NUMBER_TEMPLATE = "{prefix}-{date}-{sequence}";
 export const DEFAULT_FOLDER_TEMPLATE = "[{code}] {name}";
 
 export interface CreateProjectData {
@@ -124,6 +124,17 @@ export interface UpdateProjectData {
 export interface ProjectStatusHistory {
   id: number;
   project_id: number;
+  status: string;
+  changed_at: string;
+}
+
+export interface CreateStatusHistoryData {
+  project_id: number;
+  status: string;
+  changed_at: string;
+}
+
+export interface UpdateStatusHistoryData {
   status: string;
   changed_at: string;
 }
@@ -161,11 +172,13 @@ export interface KanbanColumn {
   position: number;
   created_at: string;
   cards?: KanbanCard[];
+  column_type?: string | null;
 }
 
 export interface CreateColumnData {
   project_id: number;
   title: string;
+  column_type?: string | null;
 }
 
 // ── 看板卡片 ──────────────────────────────────────────────────
@@ -179,18 +192,29 @@ export interface KanbanCard {
   tags: string[];
   created_at: string;
   updated_at: string;
+  gantt_task_id?: number | null;
+  due_date?: string | null;
 }
 
 export interface CreateCardData {
   column_id: number;
   title: string;
   description?: string;
+  due_date?: string | null;
+  gantt_task_id?: number | null;
 }
 
 export interface UpdateCardData {
   title?: string;
   description?: string;
   tags?: string[];
+  due_date?: string | null;
+  gantt_task_id?: number | null;
+}
+
+export interface LinkCardToGanttResult {
+  card: KanbanCard;
+  task: GanttTask;
 }
 
 // ── 看板整体结构 ──────────────────────────────────────────────
@@ -297,7 +321,6 @@ export interface NotificationPreferences {
   file_received: boolean;
   share_started: boolean;
   share_stopped: boolean;
-  native_notifications: boolean;
 }
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
@@ -311,7 +334,6 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   file_received: true,
   share_started: true,
   share_stopped: true,
-  native_notifications: true,
 };
 
 // ── 网络共享 ──────────────────────────────────────────────────
@@ -328,6 +350,25 @@ export interface ReceivedFile {
   file_size: number;
   sender: string;
   saved_path: string;
+}
+
+export interface SavedConnection {
+  addr: string;
+  password: string;
+  label: string;
+  last_connected: string;
+  last_path: string;
+}
+
+export interface ClientInfo {
+  addr: string;
+  connected_at: string;
+}
+
+export interface RemoteDirEntry {
+  name: string;
+  is_dir: boolean;
+  size: number;
 }
 
 // ── 事件载荷 ──────────────────────────────────────────────────
@@ -392,7 +433,7 @@ export interface FolderEntry {
 // ── 全局搜索 ──────────────────────────────────────────────────
 
 export interface SearchResult {
-  result_type: "project" | "card" | "task";
+  result_type: "project" | "card" | "task" | "file";
   id: number;
   title: string;
   detail: string;
@@ -413,12 +454,12 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig[] = [
   {
     action: "quick_add",
     shortcut: "CommandOrControl+Shift+N",
-    label: "快速新建任务",
-    description: "打开快速创建任务面板",
+    label: "新建项目",
+    description: "打开新建项目窗口",
   },
   {
     action: "toggle_window",
-    shortcut: "CommandOrControl+Shift+S",
+    shortcut: "CommandOrControl+Alt+S",
     label: "显示/隐藏窗口",
     description: "切换主窗口的显示状态",
   },

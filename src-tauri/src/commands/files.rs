@@ -79,12 +79,17 @@ pub fn upload_file_to_project(
     let size = fs::metadata(&dest).map(|m| m.len() as i64).unwrap_or(0);
 
     let conn = db.lock().map_err(|e| e.to_string())?;
-    conn.execute(
+    let insert_result = conn.execute(
         "INSERT INTO project_files (project_id, original_name, stored_name, size)
          VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![project_id, original_name, stored_name, size],
-    )
-    .map_err(|e| e.to_string())?;
+    );
+
+    if let Err(e) = insert_result {
+        // 数据库插入失败，清理已复制的文件
+        let _ = fs::remove_file(&dest);
+        return Err(e.to_string());
+    }
 
     let id = conn.last_insert_rowid();
 
@@ -340,13 +345,17 @@ fn base64_encode(bytes: &[u8]) -> String {
 }
 
 fn truncate_text(content: String, max_bytes: usize) -> String {
-    if content.len() > max_bytes {
-        let mut s = content[..max_bytes].to_string();
-        s.push_str("\n\n... (文件过大，仅显示前 500KB)");
-        s
-    } else {
-        content
+    if content.len() <= max_bytes {
+        return content;
     }
+    // 找到不超过 max_bytes 的最后一个有效 UTF-8 字符边界
+    let mut boundary = max_bytes;
+    while boundary > 0 && !content.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    let mut s = content[..boundary].to_string();
+    s.push_str("\n\n... (文件过大，仅显示前 500KB)");
+    s
 }
 
 // ── 文件夹树浏览 ──────────────────────────────────────────────

@@ -34,6 +34,8 @@ pub struct KanbanColumn {
     pub created_at: String,
     #[serde(default)]
     pub cards: Vec<KanbanCard>,
+    #[serde(default)]
+    pub column_type: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -46,6 +48,10 @@ pub struct KanbanCard {
     pub tags: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    pub gantt_task_id: Option<i64>,
+    #[serde(default)]
+    pub due_date: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

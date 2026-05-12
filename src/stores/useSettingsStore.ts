@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { AppSettings, ShortcutConfig } from "@/types";
 import { DEFAULT_SHORTCUTS } from "@/types";
-import { settingsApi, shortcutApi, notificationApi } from "@/lib/tauri-api";
+import { settingsApi, shortcutApi } from "@/lib/tauri-api";
 
 // 快捷键配置在 settings 表中的 key
 const SHORTCUTS_KEY = "shortcuts";
@@ -23,10 +23,6 @@ interface SettingsStore {
   saveShortcuts: (shortcuts: ShortcutConfig[]) => Promise<void>;
   registerAllShortcuts: () => Promise<void>;
   unregisterAllShortcuts: () => Promise<void>;
-
-  // 通知
-  requestNotificationPermission: () => Promise<boolean>;
-  sendNativeNotification: (title: string, body: string) => Promise<void>;
 }
 
 const defaultSettings: AppSettings = {
@@ -65,9 +61,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   setTheme: (theme: "light" | "dark" | "system") => {
-    const current = get().settings;
-    set({ settings: { ...current, theme } });
+    set({ settings: { ...get().settings, theme } });
     applyTheme(theme);
+    // 委托给 saveSettings 统一持久化路径，避免竞态覆盖
+    get().saveSettings({ theme }).catch((e) => {
+      console.error("Failed to persist theme:", e);
+    });
   },
 
   saveSettings: async (partial: Record<string, string>) => {
@@ -149,27 +148,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }
   },
 
-  // ── 系统通知 ────────────────────────────────────────────────
-
-  requestNotificationPermission: async () => {
-    try {
-      const granted = await notificationApi.isPermissionGranted();
-      if (granted) return true;
-      const result = await notificationApi.requestPermission();
-      return result === "granted";
-    } catch {
-      return false;
-    }
-  },
-
-  sendNativeNotification: async (title: string, body: string) => {
-    try {
-      await notificationApi.sendNotification({ title, body });
-    } catch (e) {
-      console.warn("系统通知发送失败:", e);
-    }
-  },
-}));
+  }));
 
 function applyTheme(theme: string) {
   const root = document.documentElement;

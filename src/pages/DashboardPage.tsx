@@ -1,14 +1,27 @@
 import { useEffect, useMemo } from "react";
-import { Link } from "react-router-dom";
-import { FolderKanban, TrendingUp, Clock, Plus } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { FolderKanban, TrendingUp, Clock } from "lucide-react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { useProjectStore } from "@/stores/useProjectStore";
+import { useUserStore } from "@/stores/useUserStore";
+import Spinner from "@/components/common/Spinner";
+import EmptyState from "@/components/common/EmptyState";
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
 
 export default function DashboardPage() {
   const { projects, fetchProjects, loading } = useProjectStore();
+  const { user, fetchUser } = useUserStore();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchProjects();
-  }, [fetchProjects]);
+    fetchUser();
+  }, [fetchProjects, fetchUser]);
 
   const activeCount = useMemo(
     () =>
@@ -28,16 +41,33 @@ export default function DashboardPage() {
   return (
     <div className="p-8 animate-slide-up">
       {/* 页头 */}
-      <div className="mb-8">
-        <h1
-          className="text-headline mb-1"
-          style={{ color: "var(--text-primary)" }}
-        >
-          概览
-        </h1>
-        <p className="text-body" style={{ color: "var(--text-tertiary)" }}>
-          欢迎回来，这里是你的项目全貌
-        </p>
+      <div className="mb-8 flex items-center gap-4">
+        {user?.avatar_path ? (
+          <img
+            src={convertFileSrc(user.avatar_path)}
+            alt="头像"
+            className="w-12 h-12 rounded-full object-cover shrink-0"
+            style={{ border: "2px solid var(--gold)" }}
+          />
+        ) : (
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-serif shrink-0"
+            style={{ background: "var(--gold-glow-strong)", color: "var(--gold)", border: "2px solid var(--gold)" }}
+          >
+            {user?.name ? getInitials(user.name) : "?"}
+          </div>
+        )}
+        <div>
+          <h1
+            className="text-headline mb-1"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {user?.name ? `欢迎回来，${user.name}` : "概览"}
+          </h1>
+          <p className="text-body" style={{ color: "var(--text-tertiary)" }}>
+            这里是你的项目全貌
+          </p>
+        </div>
       </div>
 
       {/* 统计卡片 */}
@@ -83,28 +113,16 @@ export default function DashboardPage() {
       </div>
 
       {loading ? (
-        <div
-          className="text-center py-12 text-sm"
-          style={{ color: "var(--text-muted)" }}
-        >
-          加载中…
+        <div className="text-center py-12">
+          <Spinner />
         </div>
       ) : recentProjects.length === 0 ? (
-        <div className="card text-center py-12">
-          <FolderKanban
-            size={40}
-            strokeWidth={1}
-            className="mx-auto mb-3"
-            style={{ color: "var(--text-muted)" }}
-          />
-          <p className="text-sm mb-4" style={{ color: "var(--text-tertiary)" }}>
-            还没有项目，创建第一个吧
-          </p>
-          <Link to="/projects" className="btn btn-primary">
-            <Plus size={14} strokeWidth={1.5} />
-            新建项目
-          </Link>
-        </div>
+        <EmptyState
+          icon={<FolderKanban size={24} strokeWidth={1.5} />}
+          title="还没有项目"
+          description="创建第一个吧"
+          action={{ label: "新建项目", onClick: () => navigate("/projects") }}
+        />
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {recentProjects.map((project) => (

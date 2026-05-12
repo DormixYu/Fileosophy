@@ -61,6 +61,13 @@ pub struct FolderShareServer {
     running: Arc<AtomicBool>,
     password: String,
     root_path: PathBuf,
+    clients: Arc<Mutex<Vec<ClientInfo>>>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ClientInfo {
+    pub addr: String,
+    pub connected_at: String,
 }
 
 impl FolderShareServer {
@@ -81,6 +88,8 @@ impl FolderShareServer {
         let running_clone = Arc::clone(&running);
         let pw = password.clone();
         let root_clone = abs_root.clone();
+        let clients = Arc::new(Mutex::new(Vec::<ClientInfo>::new()));
+        let clients_clone = Arc::clone(&clients);
 
         thread::spawn(move || {
             log::info!("文件夹分享服务器已启动，端口: {port}, 根目录: {:?}", root_clone);
@@ -96,8 +105,30 @@ impl FolderShareServer {
                         log::info!("分享连接: {addr}");
                         let pw = pw.clone();
                         let root = root_clone.clone();
+                        let client_addr = addr.to_string();
+                        let clients = Arc::clone(&clients_clone);
+
+                        // 记录已连接客户端
+                        {
+                            let Ok(mut guard) = clients.lock() else {
+                                log::error!("无法获取客户端列表锁（可能已损坏），跳过连接记录");
+                                continue;
+                            };
+                            guard.push(ClientInfo {
+                                addr: client_addr.clone(),
+                                connected_at: chrono::Local::now().to_rfc3339(),
+                            });
+                        }
+
                         thread::spawn(move || {
-                            if let Err(e) = handle_connection(stream, &root, &pw) {
+                            let result = handle_connection(stream, &root, &pw);
+                            // 连接断开后移除客户端记录
+                            {
+                                if let Ok(mut guard) = clients.lock() {
+                                    guard.retain(|c| c.addr != client_addr);
+                                }
+                            }
+                            if let Err(e) = result {
                                 log::error!("处理分享连接失败: {e}");
                             }
                         });
@@ -119,6 +150,7 @@ impl FolderShareServer {
             running,
             password,
             root_path: abs_root,
+            clients,
         })
     }
 
@@ -314,12 +346,18 @@ fn resolve_path(root: &Path, rel_path: &str) -> Result<PathBuf, String> {
 
 // ── 帧读写工具 ────────────────────────────────────────────────
 
+/// TCP 帧最大大小（10MB），防止恶意超大帧导致内存耗尽
+const MAX_FRAME_SIZE: usize = 10 * 1024 * 1024;
+
 fn read_json_frame<T: serde::de::DeserializeOwned>(stream: &mut TcpStream) -> Result<T, String> {
     let mut len_buf = [0u8; 4];
     stream
         .read_exact(&mut len_buf)
         .map_err(|e| format!("读取帧长度失败: {e}"))?;
     let frame_len = u32::from_be_bytes(len_buf) as usize;
+    if frame_len > MAX_FRAME_SIZE {
+        return Err(format!("帧大小超限: {frame_len} > {MAX_FRAME_SIZE}"));
+    }
 
     let mut frame_buf = vec![0u8; frame_len];
     stream
@@ -391,6 +429,18 @@ pub fn get_share_status(state: State<'_, FolderShareState>) -> Result<Option<Sha
         port: s.port(),
         path: s.root_path().to_string_lossy().to_string(),
     }))
+}
+
+#[tauri::command]
+pub fn get_connected_clients(state: State<'_, FolderShareState>) -> Result<Vec<ClientInfo>, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    match guard.as_ref() {
+        Some(server) => {
+            let clients = server.clients.lock().map_err(|e| e.to_string())?;
+            Ok(clients.clone())
+        }
+        None => Ok(Vec::new()),
+    }
 }
 
 // ── TCP 客户端（加入远程共享）────────────────────────────────────
@@ -468,6 +518,9 @@ pub fn download_remote_file(
         .read_exact(&mut len_buf)
         .map_err(|e| format!("读取下载头长度失败: {e}"))?;
     let header_len = u32::from_be_bytes(len_buf) as usize;
+    if header_len > MAX_FRAME_SIZE {
+        return Err(format!("下载头大小超限: {header_len} > {MAX_FRAME_SIZE}"));
+    }
 
     let mut header_buf = vec![0u8; header_len];
     stream
@@ -476,6 +529,15 @@ pub fn download_remote_file(
 
     let header: DownloadHeader =
         serde_json::from_slice(&header_buf).map_err(|e| format!("解析下载头失败: {e}"))?;
+
+    // 限制文件大小上限（10 GB）
+    const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024 * 1024;
+    if header.file_size > MAX_FILE_SIZE {
+        return Err(format!(
+            "文件过大: {} bytes，超过上限 {} bytes",
+            header.file_size, MAX_FILE_SIZE
+        ));
+    }
 
     // 确保目标目录存在
     if let Some(parent) = Path::new(&local_path).parent() {

@@ -7,6 +7,7 @@ interface ProjectStore {
   currentProject: Project | null;
   loading: boolean;
   error: string | null;
+  pendingCreateProject: boolean;
 
   fetchProjects: () => Promise<void>;
   fetchProjectById: (id: number) => Promise<void>;
@@ -14,6 +15,8 @@ interface ProjectStore {
   updateProject: (id: number, data: UpdateProjectData) => Promise<void>;
   deleteProject: (id: number) => Promise<void>;
   clearCurrentProject: () => void;
+  requestCreateProject: () => void;
+  consumeCreateProject: () => boolean;
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
@@ -21,6 +24,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   currentProject: null,
   loading: false,
   error: null,
+  pendingCreateProject: false,
 
   fetchProjects: async () => {
     set({ loading: true, error: null });
@@ -85,4 +89,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   },
 
   clearCurrentProject: () => set({ currentProject: null }),
+
+  requestCreateProject: () => set({ pendingCreateProject: true }),
+  consumeCreateProject: () => {
+    const pending = get().pendingCreateProject;
+    if (pending) set({ pendingCreateProject: false });
+    return pending;
+  },
 }));

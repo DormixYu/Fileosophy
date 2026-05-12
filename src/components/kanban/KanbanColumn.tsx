@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, Pencil, Trash2 } from "lucide-react";
 import type { KanbanColumn as ColumnType, KanbanCard as CardType } from "@/types";
@@ -11,22 +12,19 @@ interface Props {
   column: ColumnType;
   onCardClick?: (card: CardType) => void;
   onCardDelete?: (cardId: number) => void;
+  onCardComplete?: (cardId: number) => void;
+  onAddTask?: (columnId: number) => void;
 }
 
-export default function KanbanColumn({ column, onCardClick, onCardDelete }: Props) {
-  const { createCard, updateColumn, deleteColumn } = useKanbanStore();
-  const [showAdd, setShowAdd] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
+export default function KanbanColumn({ column, onCardClick, onCardDelete, onCardComplete, onAddTask }: Props) {
+  const { updateColumn, deleteColumn } = useKanbanStore();
+  const { setNodeRef: setDroppableRef } = useDroppable({
+    id: `column-${column.id}`,
+    data: { columnId: column.id, isColumn: true },
+  });
   const [showRename, setShowRename] = useState(false);
   const [renameTitle, setRenameTitle] = useState("");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  const handleAddCard = async () => {
-    if (!newTitle.trim()) return;
-    await createCard({ column_id: column.id, title: newTitle.trim() });
-    setNewTitle("");
-    setShowAdd(false);
-  };
 
   const handleRename = async () => {
     if (!renameTitle.trim()) return;
@@ -54,11 +52,22 @@ export default function KanbanColumn({ column, onCardClick, onCardDelete }: Prop
           style={{ borderColor: "var(--border-light)" }}
         >
           <h3
-            className="text-sm font-medium truncate flex-1"
+            className="text-sm font-medium truncate"
             style={{ color: "var(--text-primary)" }}
           >
             {column.title}
           </h3>
+          {column.column_type && (
+            <span
+              className="text-[9px] px-1.5 py-0.5 rounded ml-1"
+              style={{
+                background: "var(--gold-glow)",
+                color: "var(--gold)",
+              }}
+            >
+              {column.column_type === "todo_pending" ? "待办" : column.column_type === "todo_done" ? "已完成" : ""}
+            </span>
+          )}
           <div className="flex items-center gap-0.5 ml-1">
             <button
               className="p-0.5 rounded opacity-0 group-hover/col:opacity-100 transition-opacity"
@@ -90,62 +99,28 @@ export default function KanbanColumn({ column, onCardClick, onCardDelete }: Prop
         </div>
 
         {/* 卡片列表 */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[100px]">
+        <div ref={setDroppableRef} className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[100px]">
           {(column.cards ?? []).map((card, index) => (
             <SortableCard
               key={card.id}
               card={card}
               columnId={column.id}
+              columnType={column.column_type}
               index={index}
               onClick={onCardClick ? () => onCardClick(card) : undefined}
               onDelete={onCardDelete ? () => onCardDelete(card.id) : undefined}
+              onComplete={onCardComplete && column.column_type === "todo_pending" ? () => onCardComplete(card.id) : undefined}
             />
           ))}
 
-          {showAdd ? (
-            <div className="p-2">
-              <input
-                type="text"
-                placeholder="卡片标题"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                autoFocus
-                className="w-full px-2 py-1 text-xs rounded outline-none mb-2"
-                style={{
-                  background: "var(--bg-surface-alt)",
-                  border: "1px solid var(--border-light)",
-                  color: "var(--text-primary)",
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddCard();
-                  if (e.key === "Escape") setShowAdd(false);
-                }}
-              />
-              <div className="flex gap-1">
-                <button
-                  className="btn btn-primary btn-sm text-[10px]"
-                  onClick={handleAddCard}
-                >
-                  添加
-                </button>
-                <button
-                  className="btn btn-ghost btn-sm text-[10px]"
-                  onClick={() => setShowAdd(false)}
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowAdd(true)}
-              className="w-full py-1.5 flex items-center justify-center gap-1 text-[10px] rounded transition-colors"
-              style={{ color: "var(--text-muted)" }}
-            >
-              <Plus size={12} strokeWidth={1.5} />
-              添加卡片
-            </button>
-          )}
+          <button
+            onClick={() => onAddTask?.(column.id)}
+            className="w-full py-1.5 flex items-center justify-center gap-1 text-[10px] rounded transition-colors"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <Plus size={12} strokeWidth={1.5} />
+            添加任务
+          </button>
         </div>
       </div>
 
@@ -214,15 +189,19 @@ export default function KanbanColumn({ column, onCardClick, onCardDelete }: Prop
 function SortableCard({
   card,
   columnId,
+  columnType,
   index,
   onClick,
   onDelete,
+  onComplete,
 }: {
   card: CardType;
   columnId: number;
+  columnType?: string | null;
   index: number;
   onClick?: () => void;
   onDelete?: () => void;
+  onComplete?: () => void;
 }) {
   const {
     attributes,
@@ -252,7 +231,7 @@ function SortableCard({
         >
           <GripVertical size={12} strokeWidth={1.5} />
         </button>
-        <KanbanCard card={card} onClick={onClick} onDelete={onDelete} />
+        <KanbanCard card={card} columnType={columnType} onComplete={onComplete} onClick={onClick} onDelete={onDelete} />
       </div>
     </div>
   );

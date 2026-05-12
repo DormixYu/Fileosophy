@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, FolderKanban, Columns3, ListTodo } from "lucide-react";
+import { Search, FolderKanban, Columns3, ListTodo, File } from "lucide-react";
 import Modal from "@/components/common/Modal";
 import type { SearchResult } from "@/types";
 import { searchApi } from "@/lib/tauri-api";
@@ -14,12 +14,14 @@ const typeIcons: Record<string, React.ReactNode> = {
   project: <FolderKanban size={14} strokeWidth={1.5} />,
   card: <Columns3 size={14} strokeWidth={1.5} />,
   task: <ListTodo size={14} strokeWidth={1.5} />,
+  file: <File size={14} strokeWidth={1.5} />,
 };
 
 const typeLabels: Record<string, string> = {
   project: "项目",
   card: "卡片",
   task: "任务",
+  file: "文件",
 };
 
 export default function GlobalSearch({ open, onClose }: Props) {
@@ -116,7 +118,7 @@ export default function GlobalSearch({ open, onClose }: Props) {
             value={query}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="搜索项目、卡片、任务…"
+            placeholder="搜索项目、卡片、任务、文件…"
             className="w-full pl-9 pr-3 py-2 text-sm rounded outline-none"
             style={{
               background: "var(--bg-surface-alt)",
@@ -194,7 +196,7 @@ export default function GlobalSearch({ open, onClose }: Props) {
             >
               <p className="text-sm">输入关键词开始搜索</p>
               <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                可搜索项目名称、卡片标题与描述、甘特图任务名称
+                可搜索项目名称、卡片标题与描述、甘特图任务名称、项目文件名
               </p>
             </div>
           )}
