@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import type {
   Project,
   CreateProjectData,
@@ -30,6 +30,7 @@ import type {
   FolderEntry,
   ClientInfo,
   RemoteDirEntry,
+  ActivityLogEntry,
 } from "@/types";
 
 // ── 项目管理 ──────────────────────────────────────────────────
@@ -209,10 +210,12 @@ export const fileApi = {
 
   download: (fileId: number) => invoke<string>("download_file", { fileId }),
 
+  openStoredFile: (fileId: number) => invoke<void>("open_stored_file", { fileId }),
+
   preview: (fileId: number) => invoke<FilePreview>("preview_file", { fileId }),
 
-  shareOverNetwork: (fileId: number, peerAddr: string, peerPort: number) =>
-    invoke<void>("share_file_over_network", { fileId, peerAddr, peerPort }),
+  shareOverNetwork: (fileId: number, peerAddr: string, peerPort: number, token: string) =>
+    invoke<void>("share_file_over_network", { fileId, peerAddr, peerPort, token }),
 
   discoverPeers: () => invoke<Peer[]>("discover_peers"),
 
@@ -331,11 +334,13 @@ export const shareApi = {
   start: (path: string, password: string) =>
     invoke<number>("start_folder_share", { path, password }),
 
-  stop: () => invoke<void>("stop_folder_share"),
+  stop: (port: number) => invoke<void>("stop_folder_share", { port }),
 
-  getStatus: () => invoke<{ port: number; path: string } | null>("get_share_status"),
+  getStatus: () => invoke<{ port: number; path: string }[]>("get_share_status"),
 
-  getConnectedClients: () => invoke<ClientInfo[]>("get_connected_clients"),
+  getConnectedClients: (port: number) => invoke<ClientInfo[]>("get_connected_clients", { port }),
+
+  getActivityLog: (port: number) => invoke<ActivityLogEntry[]>("get_activity_log", { port }),
 
   join: (addr: string, password: string) =>
     invoke<string>("join_shared_folder", { addr, password }),
@@ -344,13 +349,18 @@ export const shareApi = {
     invoke<RemoteDirEntry[]>("list_remote_files", { addr, password, path }),
 
   downloadRemote: (addr: string, password: string, remotePath: string, localPath: string) =>
-    invoke<void>("download_remote_file", { addr, password, remotePath, localPath }),
+    invoke<string>("download_remote_file", { addr, password, remotePath, localPath }),
+
+  uploadRemote: (addr: string, password: string, remoteDir: string, fileName: string, localPath: string) =>
+    invoke<void>("upload_remote_file", { addr, password, remoteDir, fileName, localPath }),
 };
 
 // ── 系统工具 ──────────────────────────────────────────────────
 
 export const systemApi = {
   localIp: () => invoke<string>("get_local_ip"),
+  convertFileSrc: (path: string) => convertFileSrc(path),
+  openUserGuide: () => invoke<void>("open_user_guide"),
 };
 
 // ── 用户 ──────────────────────────────────────────────────────

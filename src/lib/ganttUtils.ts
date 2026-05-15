@@ -41,8 +41,11 @@ export const INITIAL_STATUS = "planning";
 // ── 工具函数 ──────────────────────────────────────────────────────
 
 export function daysBetween(a: string, b: string): number {
-  const ms = new Date(b).getTime() - new Date(a).getTime();
-  return Math.round(ms / 86400000);
+  const dateA = new Date(a);
+  const dateB = new Date(b);
+  const utcA = Date.UTC(dateA.getFullYear(), dateA.getMonth(), dateA.getDate());
+  const utcB = Date.UTC(dateB.getFullYear(), dateB.getMonth(), dateB.getDate());
+  return Math.round((utcB - utcA) / 86400000);
 }
 
 /** 将 Date 对象格式化为本地 YYYY-MM-DD（避免 UTC 时区偏移） */
@@ -59,22 +62,6 @@ export function addDays(dateStr: string, days: number): string {
   return formatLocalDate(d);
 }
 
-export function formatDate(dateStr: string): string {
-  try {
-    return new Date(dateStr).toLocaleDateString("zh-CN");
-  } catch {
-    return dateStr;
-  }
-}
-
-export function formatDateTime(dateStr: string): string {
-  try {
-    return new Date(dateStr).toLocaleString("zh-CN");
-  } catch {
-    return dateStr;
-  }
-}
-
 export function toDatePart(dateStr: string): string {
   return dateStr.split(" ")[0];
 }
@@ -89,7 +76,7 @@ export function buildSegments(
   project: Project,
   histories: ProjectStatusHistory[],
   dayWidth: number,
-  getStatusConfig: (id?: string) => ProjectStatusConfig | undefined,
+  getStatusConfig: (id?: string | null) => ProjectStatusConfig | undefined,
 ): { color: string; left: number; width: number }[] {
   const startDate = project.start_date;
   if (!startDate) return [];

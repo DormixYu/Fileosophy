@@ -8,12 +8,17 @@ import GanttPage from "@/pages/GanttPage";
 import SharingPage from "@/pages/SharingPage";
 import SettingsPage from "@/pages/SettingsPage";
 import GlobalSearch from "@/components/common/GlobalSearch";
+import ErrorBoundary from "@/components/common/ErrorBoundary";
+import OnboardingOverlay from "@/components/common/OnboardingOverlay";
 import { useSettingsStore } from "@/stores/useSettingsStore";
 import { useProjectStore } from "@/stores/useProjectStore";
 
 function AppContent() {
   const [showSearch, setShowSearch] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [checkingOnboarding, setCheckingOnboarding] = useState(true);
   const registerAllShortcuts = useSettingsStore((s) => s.registerAllShortcuts);
+  const fetchSettings = useSettingsStore((s) => s.fetchSettings);
   const requestCreateProject = useProjectStore((s) => s.requestCreateProject);
   const navigate = useNavigate();
 
@@ -51,8 +56,39 @@ function AppContent() {
     registerAllShortcuts();
   }, [registerAllShortcuts]);
 
+  // 首次启动检测
+  useEffect(() => {
+    (async () => {
+      try {
+        await fetchSettings();
+        const settings = useSettingsStore.getState().settings;
+        if (!settings["tutorial_completed"]) {
+          setShowOnboarding(true);
+        }
+      } catch {
+        // settings 加载失败时不阻塞
+      }
+      setCheckingOnboarding(false);
+    })();
+  }, [fetchSettings]);
+
+  const handleOnboardingComplete = () => {
+    setShowOnboarding(false);
+  };
+
+  // 首次启动引导期间不渲染主页面
+  if (showOnboarding) {
+    return <OnboardingOverlay onComplete={handleOnboardingComplete} />;
+  }
+
+  // 正在检测是否需要引导时显示空白
+  if (checkingOnboarding) {
+    return null;
+  }
+
   return (
     <>
+    <ErrorBoundary>
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<DashboardPage />} />
@@ -63,6 +99,7 @@ function AppContent() {
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>
+    </ErrorBoundary>
 
     <GlobalSearch
       open={showSearch}

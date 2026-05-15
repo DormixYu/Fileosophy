@@ -244,12 +244,7 @@ export default function KanbanBoard({ projectId }: Props) {
                 value={newColumnTitle}
                 onChange={(e) => setNewColumnTitle(e.target.value)}
                 autoFocus
-                className="w-full px-2 py-1 text-sm rounded outline-none mb-2"
-                style={{
-                  background: "var(--bg-surface-alt)",
-                  border: "1px solid var(--border-light)",
-                  color: "var(--text-primary)",
-                }}
+                className="w-full input-base mb-2"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleAddColumn();
                   if (e.key === "Escape") setShowAddColumn(false);
@@ -270,7 +265,7 @@ export default function KanbanBoard({ projectId }: Props) {
           ) : (
             <button
               onClick={() => setShowAddColumn(true)}
-              className="w-72 shrink-0 rounded-lg p-3 flex items-center justify-center gap-2 text-xs transition-all"
+              className="w-72 shrink-0 rounded-lg p-3 flex items-center justify-center gap-2 text-xs transition-all hover-gold-border"
               style={{
                 background: "var(--bg-surface-alt)",
                 border: "1px dashed var(--border-default)",
@@ -309,12 +304,7 @@ export default function KanbanBoard({ projectId }: Props) {
               type="text"
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded outline-none"
-              style={{
-                background: "var(--bg-surface-alt)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
-              }}
+              className="w-full input-base"
               autoFocus
             />
           </div>
@@ -326,12 +316,7 @@ export default function KanbanBoard({ projectId }: Props) {
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 text-sm rounded outline-none resize-none"
-              style={{
-                background: "var(--bg-surface-alt)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
-              }}
+              className="w-full input-base resize-none"
             />
           </div>
           <div>
@@ -343,12 +328,7 @@ export default function KanbanBoard({ projectId }: Props) {
               value={editTags}
               onChange={(e) => setEditTags(e.target.value)}
               placeholder="例如：前端, 高优先级"
-              className="w-full px-3 py-2 text-sm rounded outline-none"
-              style={{
-                background: "var(--bg-surface-alt)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
-              }}
+              className="w-full input-base"
             />
           </div>
           <div>
@@ -388,12 +368,7 @@ export default function KanbanBoard({ projectId }: Props) {
                   value={linkName}
                   onChange={(e) => setLinkName(e.target.value)}
                   placeholder="任务名称"
-                  className="w-full px-2 py-1.5 text-xs rounded outline-none"
-                  style={{
-                    background: "var(--bg-surface-alt)",
-                    border: "1px solid var(--border-light)",
-                    color: "var(--text-primary)",
-                  }}
+                  className="w-full input-base"
                 />
                 <div className="flex gap-2">
                   <DatePicker value={linkStartDate} onChange={setLinkStartDate} className="flex-1" style={{ background: "var(--bg-surface-alt)", border: "1px solid var(--border-light)", color: "var(--text-primary)" }} />
@@ -403,12 +378,7 @@ export default function KanbanBoard({ projectId }: Props) {
                     onChange={(e) => setLinkDuration(e.target.value)}
                     placeholder="天数"
                     min="1"
-                    className="w-20 px-2 py-1.5 text-xs rounded outline-none"
-                    style={{
-                      background: "var(--bg-surface-alt)",
-                      border: "1px solid var(--border-light)",
-                      color: "var(--text-primary)",
-                    }}
+                    className="w-20 input-base"
                   />
                 </div>
                 <button
@@ -449,12 +419,7 @@ export default function KanbanBoard({ projectId }: Props) {
               type="text"
               value={addTaskName}
               onChange={(e) => setAddTaskName(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded outline-none"
-              style={{
-                background: "var(--bg-surface-alt)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
-              }}
+              className="w-full input-base"
               onKeyDown={(e) => e.key === "Enter" && handleAddTask()}
               autoFocus
             />
@@ -475,12 +440,7 @@ export default function KanbanBoard({ projectId }: Props) {
                 min={1}
                 value={addTaskDuration}
                 onChange={(e) => setAddTaskDuration(Math.max(1, Number(e.target.value)))}
-                className="w-full px-3 py-2 text-sm rounded outline-none"
-                style={{
-                  background: "var(--bg-surface-alt)",
-                  border: "1px solid var(--border-light)",
-                  color: "var(--text-primary)",
-                }}
+                className="w-full input-base"
               />
             </div>
           </div>
@@ -492,12 +452,7 @@ export default function KanbanBoard({ projectId }: Props) {
               value={addTaskDescription}
               onChange={(e) => setAddTaskDescription(e.target.value)}
               rows={2}
-              className="w-full px-3 py-2 text-sm rounded outline-none resize-none"
-              style={{
-                background: "var(--bg-surface-alt)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
-              }}
+              className="w-full input-base resize-none"
             />
           </div>
           <label

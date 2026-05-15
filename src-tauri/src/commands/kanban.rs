@@ -1,4 +1,4 @@
-use super::projects::DbConn;
+use crate::db::DbConn;
 use crate::db::models::{GanttTask, KanbanBoard, KanbanCard, KanbanColumn};
 use crate::events;
 use tauri::{AppHandle, Emitter, State};
@@ -504,7 +504,7 @@ pub fn unlink_card_from_gantt(
         "SELECT kc.project_id FROM kanban_cards c JOIN kanban_columns kc ON c.column_id = kc.id WHERE c.id = ?1",
         [card_id],
         |row| row.get(0),
-    ).unwrap_or(0);
+    ).map_err(|e| format!("查询卡片所属项目失败: {e}"))?;
 
     let _ = app.emit(events::EVENT_PROJECT_UPDATED, project_id);
     Ok(card)

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Pencil, Clock, Calendar, FolderOpen } from "lucide-react";
 import { useProjectStore } from "@/stores/useProjectStore";
@@ -9,8 +9,7 @@ import FilePanel from "@/components/files/FilePanel";
 import Spinner from "@/components/common/Spinner";
 import KanbanBoard from "@/components/kanban/KanbanBoard";
 import GanttChart from "@/components/gantt/GanttChart";
-import type { ProjectStatusConfig } from "@/types";
-import { DEFAULT_PROJECT_STATUSES } from "@/types";
+import { formatDate, formatDateTime } from "@/lib/formatUtils";
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,16 +17,7 @@ export default function ProjectDetailPage() {
   const projectId = Number(id);
   const { currentProject, fetchProjectById, updateProject, loading } =
     useProjectStore();
-  const { settings } = useSettingsStore();
-
-  const statuses: ProjectStatusConfig[] = useMemo(() => {
-    try {
-      const raw = settings["project_statuses"];
-      return raw ? JSON.parse(raw) : DEFAULT_PROJECT_STATUSES;
-    } catch {
-      return DEFAULT_PROJECT_STATUSES;
-    }
-  }, [settings]);
+  const { parsedStatuses, parsedTypes } = useSettingsStore();
 
   const [showEdit, setShowEdit] = useState(false);
   const [editName, setEditName] = useState("");
@@ -35,38 +25,27 @@ export default function ProjectDetailPage() {
   const [activeView, setActiveView] = useState<"detail" | "kanban" | "gantt">("detail");
 
   useEffect(() => {
-    if (projectId) fetchProjectById(projectId);
+    if (projectId && !isNaN(projectId)) fetchProjectById(projectId);
     return () => {
       // 仅组件卸载时清理，避免项目间切换时闪烁
     };
   }, [projectId, fetchProjectById]);
 
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return "—";
-    try {
-      return new Date(dateStr).toLocaleDateString("zh-CN", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-
-  const formatDateTime = (dateStr?: string) => {
-    if (!dateStr) return "—";
-    try {
-      return new Date(dateStr).toLocaleString("zh-CN");
-    } catch {
-      return dateStr;
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <Spinner />
+      </div>
+    );
+  }
+
+  if (!id || isNaN(projectId)) {
+    return (
+      <div
+        className="flex items-center justify-center h-full text-sm"
+        style={{ color: "var(--text-muted)" }}
+      >
+        无效的项目 ID
       </div>
     );
   }
@@ -82,7 +61,7 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const statusConfig = statuses.find((s) => s.id === currentProject.status);
+  const statusConfig = parsedStatuses.find((s) => s.id === currentProject.status);
 
   return (
     <div className="flex flex-col h-full animate-slide-up">
@@ -96,27 +75,23 @@ export default function ProjectDetailPage() {
       >
         <button
           onClick={() => navigate("/projects")}
-          className="p-1.5 rounded-md transition-colors"
-          style={{ color: "var(--text-tertiary)" }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.background = "var(--gold-glow)")
-          }
-          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          className="p-1.5 rounded-md transition-colors hover-gold-bg"
+          style={{ color: "var(--text-secondary)" }}
+          aria-label="返回"
         >
           <ArrowLeft size={16} strokeWidth={1.5} />
         </button>
         <div className="flex-1 min-w-0 flex items-center gap-2">
           <h1
-            className="text-title truncate"
+            className="text-headline font-serif truncate"
             style={{ color: "var(--text-primary)" }}
           >
             {currentProject.name}
           </h1>
           <button
-            className="p-1 rounded-md transition-colors flex-shrink-0"
-            style={{ color: "var(--text-tertiary)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--gold-glow)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            className="p-1 rounded-md transition-colors flex-shrink-0 hover-gold-bg"
+            style={{ color: "var(--text-secondary)" }}
+            aria-label="编辑项目"
             onClick={() => {
               setEditName(currentProject.name);
               setEditDescription(currentProject.description ?? "");
@@ -130,8 +105,8 @@ export default function ProjectDetailPage() {
 
       {/* 视图切换 Tab */}
       <div
-        className="flex items-center gap-1 px-6 h-10 shrink-0 border-b"
-        style={{ background: "var(--bg-surface)", borderColor: "var(--border-light)" }}
+        className="flex items-center gap-1 px-6 h-10 shrink-0"
+        style={{ background: "var(--bg-surface)" }}
       >
         {([
           { key: "detail", label: "项目详情" },
@@ -143,8 +118,9 @@ export default function ProjectDetailPage() {
             onClick={() => setActiveView(tab.key)}
             className="px-3 py-1.5 text-xs rounded-md transition-all"
             style={{
-              color: activeView === tab.key ? "var(--gold)" : "var(--text-muted)",
+              color: activeView === tab.key ? "var(--gold)" : "var(--text-secondary)",
               background: activeView === tab.key ? "var(--gold-glow)" : "transparent",
+              borderBottom: activeView === tab.key ? "2px solid var(--gold)" : "2px solid transparent",
             }}
           >
             {tab.label}
@@ -157,15 +133,9 @@ export default function ProjectDetailPage() {
         {activeView === "detail" && (
           <div className="p-6 space-y-6">
         {/* 项目信息卡片 */}
-        <div
-          className="rounded-lg p-5"
-          style={{
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border-light)",
-          }}
-        >
+        <div className="card">
           <h2
-            className="text-sm font-medium mb-4"
+            className="text-callout font-serif mb-4"
             style={{ color: "var(--text-primary)" }}
           >
             项目信息
@@ -185,20 +155,20 @@ export default function ProjectDetailPage() {
             {/* 项目分类 */}
             <InfoItem
               label="项目分类"
-              value={currentProject.project_type || "—"}
+              value={parsedTypes.find(t => t.id === currentProject.project_type)?.name || currentProject.project_type || "—"}
             />
             {/* 项目状态 */}
             <div>
               <span
-                className="text-[11px] block mb-0.5"
+                className="text-[11px] font-serif block mb-0.5"
                 style={{ color: "var(--text-muted)" }}
               >
                 项目状态
               </span>
               <span
-                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs"
+                className="badge inline-flex items-center gap-1.5"
                 style={{
-                  background: statusConfig ? `${statusConfig.color}18` : "var(--bg-surface-alt)",
+                  background: "var(--gold-glow)",
                   color: statusConfig?.color ?? "var(--text-secondary)",
                 }}
               >
@@ -250,7 +220,7 @@ export default function ProjectDetailPage() {
           {currentProject.description && (
             <div className="mt-4 pt-4 border-t" style={{ borderColor: "var(--border-light)" }}>
               <span
-                className="text-[11px] block mb-1"
+                className="text-[11px] font-serif block mb-1"
                 style={{ color: "var(--text-muted)" }}
               >
                 项目描述
@@ -263,15 +233,9 @@ export default function ProjectDetailPage() {
         </div>
 
         {/* 文件列表 */}
-        <div
-          className="rounded-lg p-5"
-          style={{
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border-light)",
-          }}
-        >
+        <div className="card">
           <h2
-            className="text-sm font-medium mb-4 flex items-center gap-2"
+            className="text-callout font-serif mb-4 flex items-center gap-2"
             style={{ color: "var(--text-primary)" }}
           >
             <FolderOpen size={16} strokeWidth={1.5} />
@@ -330,12 +294,7 @@ export default function ProjectDetailPage() {
               type="text"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded outline-none"
-              style={{
-                background: "var(--bg-surface-alt)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
-              }}
+              className="w-full input-base"
               autoFocus
             />
           </div>
@@ -347,12 +306,7 @@ export default function ProjectDetailPage() {
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 text-sm rounded outline-none resize-none"
-              style={{
-                background: "var(--bg-surface-alt)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
-              }}
+              className="w-full input-base resize-none"
             />
           </div>
         </div>
@@ -373,7 +327,7 @@ function InfoItem({
   return (
     <div>
       <span
-        className="text-[11px] block mb-0.5"
+        className="text-[11px] font-serif block mb-0.5"
         style={{ color: "var(--text-muted)" }}
       >
         {label}

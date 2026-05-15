@@ -1,4 +1,4 @@
-use super::projects::DbConn;
+use crate::db::DbConn;
 use crate::db::models::{FileEntry, FilePreview};
 use crate::events;
 use crate::mdns::{MdnsService, Peer};
@@ -135,12 +135,14 @@ pub fn delete_file(app: AppHandle, db: State<'_, DbConn>, file_id: i64) -> Resul
         .join("files")
         .join(project_id.to_string())
         .join(&stored_name);
-    if file_path.exists() {
-        fs::remove_file(&file_path).map_err(|e| e.to_string())?;
-    }
 
+    // 先删 DB 记录，再删磁盘文件（避免 DB 删除失败导致孤儿记录）
     conn.execute("DELETE FROM project_files WHERE id = ?1", [file_id])
         .map_err(|e| e.to_string())?;
+
+    if file_path.exists() {
+        let _ = fs::remove_file(&file_path); // 磁盘文件删除失败不影响结果
+    }
 
     let _ = app.emit(events::EVENT_PROJECT_UPDATED, project_id);
     events::emit_notification(&app, "warning", "文件已删除", &original_name, None);
@@ -156,6 +158,7 @@ pub fn share_file_over_network(
     file_id: i64,
     peer_addr: String,
     peer_port: u16,
+    token: String,
 ) -> Result<(), String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
 
@@ -190,6 +193,7 @@ pub fn share_file_over_network(
         peer_port,
         file_path.to_string_lossy().as_ref(),
         &sender_name,
+        &token,
     )?;
 
     let _ = app.emit(
@@ -205,13 +209,32 @@ pub fn share_file_over_network(
     Ok(())
 }
 
-/// 获取文件的磁盘路径，供前端用系统默认应用打开
+/// 获取文件的原始文件名（不再暴露磁盘绝对路径）
 #[tauri::command]
 pub fn download_file(
-    app: AppHandle,
     db: State<'_, DbConn>,
     file_id: i64,
 ) -> Result<String, String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+
+    let original_name: String = conn
+        .query_row(
+            "SELECT original_name FROM project_files WHERE id = ?1",
+            [file_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(original_name)
+}
+
+/// 用系统默认程序打开已存储的项目文件（不暴露路径给前端）
+#[tauri::command]
+pub fn open_stored_file(
+    app: AppHandle,
+    db: State<'_, DbConn>,
+    file_id: i64,
+) -> Result<(), String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
 
     let (project_id, stored_name): (i64, String) = conn
@@ -232,7 +255,28 @@ pub fn download_file(
         return Err("文件不存在于磁盘".to_string());
     }
 
-    Ok(file_path.to_string_lossy().to_string())
+    drop(conn);
+
+    // 用系统默认程序打开
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("cmd")
+        .args(["/c", "start", "", &file_path.to_string_lossy()])
+        .spawn()
+        .map_err(|e| format!("打开文件失败: {e}"))?;
+
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg(&file_path)
+        .spawn()
+        .map_err(|e| format!("打开文件失败: {e}"))?;
+
+    #[cfg(target_os = "linux")]
+    std::process::Command::new("xdg-open")
+        .arg(&file_path)
+        .spawn()
+        .map_err(|e| format!("打开文件失败: {e}"))?;
+
+    Ok(())
 }
 
 /// 发现局域网中的其他 Fileosophy 实例
@@ -401,13 +445,17 @@ fn scan_dir(root: &std::path::Path, dir: &std::path::Path, depth: u32) -> Result
         let entry_path = entry.path();
         let file_type = entry.file_type().map_err(|e| format!("获取类型失败: {e}"))?;
 
-        // 路径穿越防护
-        if !entry_path.starts_with(root) {
+        // 路径穿越防护：canonicalize 解析符号链接后验证仍在 root 内
+        let canonical_entry = match entry_path.canonicalize() {
+            Ok(p) => p,
+            Err(_) => continue, // 符号链接指向不存在目标等，跳过
+        };
+        if !canonical_entry.starts_with(root) {
             continue;
         }
 
         if file_type.is_dir() {
-            dirs.push(entry_path);
+            dirs.push(canonical_entry);
         } else {
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
             let entry_name = entry.file_name().to_string_lossy().to_string();

@@ -177,7 +177,7 @@ cd src-tauri && cargo test
   - `/sharing` → SharingPage（局域网共享管理，含我的分享/连接他人/远程文件浏览）
   - `/settings` → SettingsPage（主题、快捷键、数据管理）
   - 全局快捷键：`Ctrl+Shift+N` 快速新建、`Ctrl+Shift+F` 全局搜索、`Ctrl+Shift+S` 显示/隐藏窗口
-- `lib/tauri-api.ts` — 所有后端 IPC 调用封装，按领域分对象导出（`projectApi`、`kanbanApi`、`ganttApi`、`fileApi`、`settingsApi`、`exportApi`、`shortcutApi`、`notificationApi`）。除此之外任何地方不得裸调 `invoke`
+- `lib/tauri-api.ts` — 所有后端 IPC 调用封装，按领域分对象导出：`projectApi`、`kanbanApi`、`ganttApi`、`fileApi`、`settingsApi`、`notificationHistoryApi`、`searchApi`、`exportApi`、`folderApi`、`shortcutApi`、`shareApi`、`systemApi`、`userApi`。除此之外任何地方不得裸调 `invoke`
 - `lib/ganttUtils.ts` — 甘特图工具函数（视图模式、日期计算、格式化等）
 - `stores/` — Zustand 按领域拆分：`useProjectStore`、`useKanbanStore`、`useGanttStore`、`useSettingsStore`、`useNotificationStore`（含 Toast + 历史 + 偏好）、`useUserStore`、`useShareStore`
 - `components/` — UI 组件，按功能分目录：
@@ -193,9 +193,9 @@ cd src-tauri && cargo test
 ## 数据库表结构（SQLite）
 
 ```sql
-projects(id INTEGER PK AUTOINCREMENT, name TEXT, description TEXT, created_at TEXT, updated_at TEXT)
-kanban_columns(id INTEGER PK AUTOINCREMENT, project_id INTEGER FK CASCADE, title TEXT, position INTEGER, created_at TEXT)
-kanban_cards(id INTEGER PK AUTOINCREMENT, column_id INTEGER FK CASCADE, title TEXT, description TEXT, position INTEGER, tags TEXT, created_at TEXT, updated_at TEXT)
+projects(id INTEGER PK AUTOINCREMENT, name TEXT, description TEXT, created_at TEXT, updated_at TEXT, project_number TEXT, project_type TEXT, status TEXT, start_date TEXT, end_date TEXT, status_changed_at TEXT, created_by TEXT, folder_path TEXT)
+kanban_columns(id INTEGER PK AUTOINCREMENT, project_id INTEGER FK CASCADE, title TEXT, position INTEGER, column_type TEXT, created_at TEXT)
+kanban_cards(id INTEGER PK AUTOINCREMENT, column_id INTEGER FK CASCADE, title TEXT, description TEXT, position INTEGER, tags TEXT, gantt_task_id INTEGER, due_date TEXT, created_at TEXT, updated_at TEXT)
 gantt_tasks(id INTEGER PK AUTOINCREMENT, project_id INTEGER FK CASCADE, name TEXT, start_date TEXT, duration_days INTEGER, dependencies TEXT, progress REAL, created_at TEXT)
 project_files(id INTEGER PK AUTOINCREMENT, project_id INTEGER FK CASCADE, original_name TEXT, stored_name TEXT, size INTEGER, uploaded_at TEXT)
 settings(key TEXT PK, value TEXT)
@@ -207,6 +207,24 @@ project_milestones(id INTEGER PK AUTOINCREMENT, project_id INTEGER FK CASCADE, n
 - `tags` 和 `dependencies` 以 JSON 字符串存储在 SQLite 中（如 `'["tag1","tag2"]'`、`'[1,2,3]'`）
 - 所有 ID 类型为 `i64`（对应 INTEGER PRIMARY KEY AUTOINCREMENT）
 - 数据库文件路径：`$APP_DATA/fileosophy.db`（通过 `app.path().app_data_dir()` 获取）
+- 增量迁移通过 `column_exists()` 检查列是否已存在后再 `ALTER TABLE ADD COLUMN`，避免重复执行报错
+
+## 看板-甘特图联动
+
+卡片和甘特图任务可以双向关联：
+- **link_card_to_gantt**：从看板卡片创建关联甘特图任务（自动创建 gantt_task 并将 `gantt_task_id` 写入 kanban_card）
+- **unlink_card_from_gantt**：解除关联（清除卡片上的 `gantt_task_id`，但甘特图任务保留）
+- **sync_gantt_to_kanban**：从甘特图侧同步任务属性到关联的卡片（名称、日期等）
+
+`kanban_cards.gantt_task_id` 是关联的外键，Rust 模型中为 `Option<i64>`。
+
+## AppSettings 扩展模式
+
+`AppSettings` Rust 模型使用 `#[serde(flatten)]` + `HashMap<String, String>` 扩展字段，这意味着除了固定的 `theme` 和 `language` 外，`settings` 表可以存储任意键值对（如 `share_connections`、`notification_history`、`notification_preferences`、`folder_template`、`default_project_path` 等），前端 TypeScript 类型同样允许额外字段。
+
+## CSS 变量命名约定
+
+组件中使用复合 CSS 变量名（如 `--text-primary`、`--text-secondary`、`--bg-void`、`--bg-surface-alt`、`--gold-glow`、`--border-light`），这些是对品牌设计系统 Token 的扩展变体。基础 Token 名（如 `--text`、`--bg`、`--accent`）在全局 CSS 中定义，组件中的变体名在各自的样式或 Layout 中定义。
 
 ## 品牌设计系统
 

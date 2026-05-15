@@ -4,6 +4,7 @@ pub const EVENT_PROJECT_UPDATED: &str = "project-updated";
 pub const EVENT_CARD_MOVED: &str = "card-moved";
 pub const EVENT_FILE_SHARED: &str = "file-shared";
 pub const EVENT_NOTIFICATION: &str = "app-notification";
+pub const EVENT_USER_UPDATED: &str = "user-updated";
 
 /// 发送通知事件到前端
 pub fn emit_notification(app: &tauri::AppHandle, type_: &str, title: &str, message: &str, link: Option<&str>) {

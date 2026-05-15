@@ -153,14 +153,16 @@ export default function GanttChart({ projectId }: Props) {
   // 空状态仍然显示添加按钮
   const header = (
     <div className="flex items-center justify-between">
-      <h3 className="text-title" style={{ color: "var(--text-primary)" }}>
-        甘特图
-      </h3>
+      <div className="flex items-center gap-2">
+        <h3 className="text-title font-serif" style={{ color: "var(--text-primary)" }}>
+          甘特图
+        </h3>
+        <span className="w-6 h-px" style={{ background: "var(--gold)" }} />
+      </div>
       <div className="flex items-center gap-2">
         {hasTasks && (
           <button
-            className="btn btn-ghost btn-sm"
-            style={{ color: "var(--text-secondary)" }}
+            className="btn btn-outline btn-sm hover-gold-text"
             onClick={scrollToToday}
           >
             <Crosshair size={14} strokeWidth={1.5} />
@@ -222,7 +224,7 @@ export default function GanttChart({ projectId }: Props) {
                 {monthLabels.map((m, i) => (
                   <div
                     key={i}
-                    className="shrink-0 text-center text-[10px] font-medium py-1 border-r whitespace-nowrap overflow-hidden"
+                    className="shrink-0 text-center text-[10px] font-serif font-medium py-1 border-r whitespace-nowrap overflow-hidden"
                     style={{
                       width: m.span * DAY_WIDTH,
                       color: "var(--text-secondary)",
@@ -259,7 +261,7 @@ export default function GanttChart({ projectId }: Props) {
                   return (
                     <div
                       key={i}
-                      className="shrink-0 text-center text-[9px] py-0.5 border-r"
+                      className="shrink-0 text-center text-[9px] font-mono py-0.5 border-r"
                       style={{
                         width: DAY_WIDTH,
                         fontWeight: d === 1 ? 600 : 400,
@@ -287,11 +289,11 @@ export default function GanttChart({ projectId }: Props) {
             <div style={{ position: "relative" }}>
               {/* 今日线 */}
               <div
-                className="absolute top-0 bottom-0 w-px z-10 pointer-events-none"
+                className="absolute top-0 bottom-0 w-0.5 z-10 pointer-events-none"
                 style={{
                   left: daysBetween(minDate, today) * DAY_WIDTH,
                   background: "var(--color-danger)",
-                  opacity: 0.4,
+                  opacity: 0.6,
                 }}
               />
 
@@ -375,12 +377,7 @@ export default function GanttChart({ projectId }: Props) {
               type="text"
               value={addName}
               onChange={(e) => setAddName(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded outline-none"
-              style={{
-                background: "var(--bg-surface-alt)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
-              }}
+              className="w-full input-base"
               onKeyDown={(e) => e.key === "Enter" && handleAdd()}
               autoFocus
             />
@@ -401,12 +398,7 @@ export default function GanttChart({ projectId }: Props) {
                 min={1}
                 value={addDuration}
                 onChange={(e) => setAddDuration(Math.max(1, Number(e.target.value)))}
-                className="w-full px-3 py-2 text-sm rounded outline-none"
-                style={{
-                  background: "var(--bg-surface-alt)",
-                  border: "1px solid var(--border-light)",
-                  color: "var(--text-primary)",
-                }}
+                className="w-full input-base"
               />
             </div>
           </div>
@@ -419,7 +411,7 @@ export default function GanttChart({ projectId }: Props) {
                 {tasks.map((t) => (
                   <label
                     key={t.id}
-                    className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer"
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors hover-gold-bg"
                     style={{ color: "var(--text-secondary)" }}
                   >
                     <input
@@ -463,11 +455,7 @@ export default function GanttChart({ projectId }: Props) {
         footer={
           <div className="flex items-center justify-between w-full">
             <button
-              className="btn btn-sm"
-              style={{
-                background: "var(--color-danger)",
-                color: "#fff",
-              }}
+              className="btn btn-danger btn-sm"
               onClick={handleDeleteTask}
             >
               <Trash2 size={14} strokeWidth={1.5} />
@@ -493,12 +481,7 @@ export default function GanttChart({ projectId }: Props) {
               type="text"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded outline-none"
-              style={{
-                background: "var(--bg-surface-alt)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
-              }}
+              className="w-full input-base"
               autoFocus
             />
           </div>
@@ -518,12 +501,7 @@ export default function GanttChart({ projectId }: Props) {
                 min={1}
                 value={editDuration}
                 onChange={(e) => setEditDuration(Math.max(1, Number(e.target.value)))}
-                className="w-full px-3 py-2 text-sm rounded outline-none"
-                style={{
-                  background: "var(--bg-surface-alt)",
-                  border: "1px solid var(--border-light)",
-                  color: "var(--text-primary)",
-                }}
+                className="w-full input-base"
               />
             </div>
           </div>
@@ -551,7 +529,7 @@ export default function GanttChart({ projectId }: Props) {
                   .map((t) => (
                     <label
                       key={t.id}
-                      className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer"
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors hover-gold-bg"
                       style={{ color: "var(--text-secondary)" }}
                     >
                       <input
@@ -595,7 +573,7 @@ function GanttRow({
   const width = task.duration_days;
 
   return (
-    <div className="flex items-center" style={{ height: ROW_HEIGHT }}>
+    <div className="flex items-center transition-colors hover-elevated-bg" style={{ height: ROW_HEIGHT }}>
       {/* 名称列 - 粘性 */}
       <div
         className="shrink-0 sticky left-0 z-10 border-r flex items-center px-3 truncate"

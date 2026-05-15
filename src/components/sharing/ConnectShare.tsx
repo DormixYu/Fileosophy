@@ -42,19 +42,19 @@ export default function ConnectShare({ onSwitchToMyShares }: Props) {
     setAddr(ip);
   };
 
-  const inputStyle: React.CSSProperties = {
-    background: "var(--bg-surface)",
-    border: "1px solid var(--border-default)",
-    color: "var(--text-primary)",
-  };
-
   return (
     <div className="animate-slide-up">
       {/* 连接表单 */}
       <div className="card p-5 max-w-md">
-        <h3 className="font-serif text-base mb-1" style={{ color: "var(--text-primary)" }}>
-          连接到远程项目
-        </h3>
+        <div className="flex items-center gap-3 mb-1">
+          <h3 className="font-serif text-base" style={{ color: "var(--text-primary)" }}>
+            连接到远程项目
+          </h3>
+          <div
+            className="w-8 h-[2px] rounded-full"
+            style={{ background: "var(--gold)", opacity: 0.5 }}
+          />
+        </div>
         <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
           输入对方的 IP 地址和密码来连接
         </p>
@@ -69,8 +69,7 @@ export default function ConnectShare({ onSwitchToMyShares }: Props) {
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="为这个连接起个名字"
-              className="w-full px-3 py-2 text-sm rounded-md outline-none"
-              style={inputStyle}
+              className="input-base w-full"
               disabled={connecting}
             />
           </div>
@@ -84,8 +83,7 @@ export default function ConnectShare({ onSwitchToMyShares }: Props) {
               value={addr}
               onChange={(e) => setAddr(e.target.value)}
               placeholder="192.168.1.5:54321"
-              className="w-full px-3 py-2 text-sm font-mono rounded-md outline-none"
-              style={inputStyle}
+              className="input-base w-full font-mono"
               disabled={connecting}
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
             />
@@ -100,8 +98,7 @@ export default function ConnectShare({ onSwitchToMyShares }: Props) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="共享密码"
-              className="w-full px-3 py-2 text-sm rounded-md outline-none"
-              style={inputStyle}
+              className="input-base w-full"
               disabled={connecting}
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
             />
@@ -110,7 +107,7 @@ export default function ConnectShare({ onSwitchToMyShares }: Props) {
           {error && (
             <p
               className="text-xs px-2 py-1.5 rounded-md"
-              style={{ background: "#ef444418", color: "#ef4444" }}
+              style={{ background: "var(--color-danger-light)", color: "var(--color-danger)", border: "1px solid var(--color-danger-medium)" }}
             >
               {error}
             </p>
@@ -134,20 +131,24 @@ export default function ConnectShare({ onSwitchToMyShares }: Props) {
 
       {/* 局域网发现 */}
       <div className="mt-6">
-        <h3 className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-          <Wifi size={12} strokeWidth={1.5} className="inline mr-1" />
-          局域网实例
-        </h3>
+        <div className="flex items-center gap-2 mb-3">
+          <Wifi size={12} strokeWidth={1.5} style={{ color: "var(--gold)" }} />
+          <h3 className="text-xs font-serif" style={{ color: "var(--text-secondary)" }}>
+            局域网实例
+          </h3>
+          <div
+            className="w-6 h-[1px] rounded-full"
+            style={{ background: "var(--gold)", opacity: 0.4 }}
+          />
+        </div>
 
         {peers.length > 0 ? (
           <div className="space-y-1.5">
             {peers.map((peer) => (
               <button
                 key={peer.name}
-                className="card flex items-center gap-3 p-3 text-left transition-all w-full"
+                className="card flex items-center gap-3 p-3 text-left transition-all w-full hover-gold-border"
                 style={{ cursor: "pointer" }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--gold)")}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-default)")}
                 onClick={() => handleFillFromPeer(peer)}
               >
                 <Wifi size={14} strokeWidth={1.5} style={{ color: "var(--gold)" }} />

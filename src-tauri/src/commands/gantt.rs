@@ -1,4 +1,4 @@
-use super::projects::DbConn;
+use crate::db::DbConn;
 use crate::db::models::GanttTask;
 use crate::events;
 use tauri::{AppHandle, Emitter, State};

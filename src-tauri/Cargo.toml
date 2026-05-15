@@ -6,7 +6,7 @@ edition = "2021"
 
 [lib]
 name = "fileosophy_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -19,10 +19,8 @@ tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
-thiserror = "2"
 uuid = { version = "1", features = ["v4"] }
 mdns-sd = "0.12"
-tokio = { version = "1", features = ["net", "io-util", "macros"] }
 log = "0.4"
 env_logger = "0.11"
 local-ip-address = "0.6"
@@ -30,3 +28,7 @@ base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 tauri-plugin-fs = "2.5.1"
+socket2 = { version = "0.5", features = ["all"] }
+sha2 = "0.10"
+rand = "0.8"
+image = "0.25"

@@ -8,17 +8,17 @@
 export interface Project {
   id: number;
   name: string;
-  description: string;
+  description: string | null;
   created_at: string;
   updated_at: string;
-  project_number: string;
-  project_type: string;
-  status: ProjectStatus;
-  start_date: string;
-  end_date: string;
-  status_changed_at: string;
-  created_by: string;
-  folder_path: string;
+  project_number: string | null;
+  project_type: string | null;
+  status: ProjectStatus | null;
+  start_date: string | null;
+  end_date: string | null;
+  status_changed_at: string | null;
+  created_by: string | null;
+  folder_path: string | null;
 }
 
 // ── 用户 ──────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ export const DEFAULT_PROJECT_STATUSES: ProjectStatusConfig[] = [
   { id: "planning", name: "规划中", color: "#6366f1", sort_order: 0 },
   { id: "in_progress", name: "进行中", color: "#f59e0b", sort_order: 1 },
   { id: "on_hold", name: "已暂停", color: "#8b5cf6", sort_order: 2 },
-  { id: "completed", name: "已完成", color: "#22c55e", sort_order: 3 },
+  { id: "completed", name: "已完成", color: "#6B8E5A", sort_order: 3 },
   { id: "cancelled", name: "已取消", color: "#94a3b8", sort_order: 4 },
 ];
 
@@ -84,7 +84,7 @@ export interface ProjectTableColumn {
 
 export const DEFAULT_PROJECT_TABLE_COLUMNS: ProjectTableColumn[] = [
   { key: "project_number", label: "编号", width: 115, sortable: true, visible: true },
-  { key: "name", label: "名称", width: 200, sortable: true, visible: true, fixed: true },
+  { key: "name", label: "名称", width: 130, sortable: true, visible: true, fixed: true },
   { key: "status", label: "状态", width: 95, sortable: true, visible: true, fixed: true },
   { key: "project_type", label: "分类", width: 65, sortable: true, visible: true },
   { key: "start_date", label: "开始日期", width: 95, sortable: true, visible: true },
@@ -343,18 +343,13 @@ export interface Peer {
   host: string;
   port: number;
   addresses: string[];
+  token: string;
 }
 
-export interface ReceivedFile {
-  file_name: string;
-  file_size: number;
-  sender: string;
-  saved_path: string;
-}
+// ── 网络共享 ──────────────────────────────────────────────────
 
 export interface SavedConnection {
   addr: string;
-  password: string;
   label: string;
   last_connected: string;
   last_path: string;
@@ -371,17 +366,15 @@ export interface RemoteDirEntry {
   size: number;
 }
 
+export interface ActivityLogEntry {
+  client_addr: string;
+  action: "download" | "upload";
+  file_path: string;
+  file_size: number;
+  timestamp: string;
+}
+
 // ── 事件载荷 ──────────────────────────────────────────────────
-
-export interface ProjectUpdatedPayload {
-  project_id: number;
-}
-
-export interface CardMovedPayload {
-  card_id: number;
-  target_column_id: number;
-  position: number;
-}
 
 export interface NotificationPayload {
   type: string;
@@ -397,27 +390,17 @@ export interface FileSharedPayload {
   status?: string;
 }
 
-// ── 项目导出/导入 ─────────────────────────────────────────────
-
-export interface ProjectExport {
-  version: number;
-  project: Project;
-  kanban_columns: KanbanColumn[];
-  gantt_tasks: GanttTask[];
-  files: FileEntry[];
-}
-
 // ── 文件夹扫描 ────────────────────────────────────────────────
 
 export interface ScannedFolder {
   folder_name: string;
   path: string;
   matched: boolean;
-  parsed_code: string;
-  parsed_name: string;
-  inferred_type: string;
-  inferred_date: string;
-  inferred_end_date: string;
+  parsed_code: string | null;
+  parsed_name: string | null;
+  inferred_type: string | null;
+  inferred_date: string | null;
+  inferred_end_date: string | null;
 }
 
 // ── 文件夹树 ──────────────────────────────────────────────────

@@ -71,12 +71,12 @@ export default {
         xl: "24px",
       },
       boxShadow: {
-        sm: "0 1px 2px rgba(22, 18, 14, 0.05)",
-        md: "0 4px 12px rgba(22, 18, 14, 0.08)",
+        sm: "0 1px 2px rgba(0, 0, 0, 0.04)",
+        md: "0 4px 12px rgba(0, 0, 0, 0.06)",
         lg: "0 8px 40px rgba(0, 0, 0, 0.55)",
-        xl: "0 16px 48px rgba(0, 0, 0, 0.16)",
-        gold: "0 4px 16px rgba(196, 155, 81, 0.2)",
-        "gold-lg": "0 8px 32px rgba(196, 155, 81, 0.3)",
+        xl: "0 16px 48px rgba(0, 0, 0, 0.10)",
+        gold: "0 4px 20px rgba(196, 155, 81, 0.15)",
+        "gold-lg": "0 8px 32px rgba(196, 155, 81, 0.18)",
       },
       animation: {
         "slide-up": "slide-up 0.3s cubic-bezier(0.22, 1, 0.36, 1)",

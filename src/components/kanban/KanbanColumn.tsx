@@ -52,26 +52,21 @@ export default function KanbanColumn({ column, onCardClick, onCardDelete, onCard
           style={{ borderColor: "var(--border-light)" }}
         >
           <h3
-            className="text-sm font-medium truncate"
+            className="text-sm font-serif truncate"
             style={{ color: "var(--text-primary)" }}
           >
             {column.title}
           </h3>
           {column.column_type && (
-            <span
-              className="text-[9px] px-1.5 py-0.5 rounded ml-1"
-              style={{
-                background: "var(--gold-glow)",
-                color: "var(--gold)",
-              }}
-            >
+            <span className="badge badge-primary ml-1">
               {column.column_type === "todo_pending" ? "待办" : column.column_type === "todo_done" ? "已完成" : ""}
             </span>
           )}
           <div className="flex items-center gap-0.5 ml-1">
             <button
-              className="p-0.5 rounded opacity-0 group-hover/col:opacity-100 transition-opacity"
+              className="p-0.5 rounded opacity-0 group-hover/col:opacity-100 transition-opacity hover-gold-text"
               style={{ color: "var(--text-muted)" }}
+              aria-label="编辑列名"
               onClick={() => {
                 setRenameTitle(column.title);
                 setShowRename(true);
@@ -80,19 +75,14 @@ export default function KanbanColumn({ column, onCardClick, onCardDelete, onCard
               <Pencil size={12} strokeWidth={1.5} />
             </button>
             <button
-              className="p-0.5 rounded opacity-0 group-hover/col:opacity-100 transition-opacity"
-              style={{ color: "var(--color-danger)" }}
+              className="p-0.5 rounded opacity-0 group-hover/col:opacity-100 transition-opacity hover-danger-text"
+              style={{ color: "var(--text-muted)" }}
+              aria-label="删除列"
               onClick={() => setShowDeleteConfirm(true)}
             >
               <Trash2 size={12} strokeWidth={1.5} />
             </button>
-            <span
-              className="text-[10px] px-1.5 py-0.5 rounded-full ml-1"
-              style={{
-                background: "var(--gold-glow)",
-                color: "var(--gold)",
-              }}
-            >
+            <span className="badge badge-primary ml-1">
               {column.cards?.length ?? 0}
             </span>
           </div>
@@ -115,7 +105,7 @@ export default function KanbanColumn({ column, onCardClick, onCardDelete, onCard
 
           <button
             onClick={() => onAddTask?.(column.id)}
-            className="w-full py-1.5 flex items-center justify-center gap-1 text-[10px] rounded transition-colors"
+            className="w-full py-1.5 flex items-center justify-center gap-1 text-[10px] rounded transition-colors hover-gold-bg"
             style={{ color: "var(--text-muted)" }}
           >
             <Plus size={12} strokeWidth={1.5} />
@@ -144,12 +134,7 @@ export default function KanbanColumn({ column, onCardClick, onCardDelete, onCard
           type="text"
           value={renameTitle}
           onChange={(e) => setRenameTitle(e.target.value)}
-          className="w-full px-3 py-2 text-sm rounded outline-none"
-          style={{
-            background: "var(--bg-surface-alt)",
-            border: "1px solid var(--border-light)",
-            color: "var(--text-primary)",
-          }}
+          className="w-full input-base"
           onKeyDown={(e) => e.key === "Enter" && handleRename()}
           autoFocus
         />
@@ -228,6 +213,7 @@ function SortableCard({
           {...listeners}
           className="mt-2 p-0.5 cursor-grab active:cursor-grabbing"
           style={{ color: "var(--text-muted)" }}
+          aria-label="拖拽排序"
         >
           <GripVertical size={12} strokeWidth={1.5} />
         </button>

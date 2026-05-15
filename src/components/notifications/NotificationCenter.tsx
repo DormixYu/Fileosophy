@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -13,23 +13,7 @@ import {
 } from "lucide-react";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 import Modal from "@/components/common/Modal";
-
-type FilterKey = "all" | "project" | "file" | "system";
-
-const filters: { key: FilterKey; label: string }[] = [
-  { key: "all", label: "全部" },
-  { key: "project", label: "项目" },
-  { key: "file", label: "文件" },
-  { key: "system", label: "系统" },
-];
-
-// 根据通知标题判断分类
-function getCategory(title: string): FilterKey {
-  if (title.includes("项目") || title.includes("卡片") || title.includes("状态")) return "project";
-  if (title.includes("文件") || title.includes("上传") || title.includes("删除")) return "file";
-  if (title.includes("共享")) return "file";
-  return "system";
-}
+import { formatTimeRelative } from "@/lib/formatUtils";
 
 // 通知类型图标
 const typeIconMap: Record<string, typeof Info> = {
@@ -63,20 +47,12 @@ export default function NotificationCenter({ open, onClose }: Props) {
     markAllRead,
     clearHistory,
   } = useNotificationStore();
-  const [filter, setFilter] = useState<FilterKey>("all");
 
   useEffect(() => {
-    if (open) {
-      fetchHistory();
-      setFilter("all");
-    }
+    if (open) fetchHistory();
   }, [open, fetchHistory]);
 
-  const filtered = filter === "all"
-    ? history
-    : history.filter((n) => getCategory(n.title) === filter);
-
-  const unreadInFilter = filtered.filter((n) => !n.read).length;
+  const unreadCount = history.filter((n) => !n.read).length;
 
   const handleNotificationClick = (n: typeof history[0]) => {
     if (!n.read) markRead(n.id);
@@ -98,8 +74,8 @@ export default function NotificationCenter({ open, onClose }: Props) {
             <button
               className="btn btn-ghost btn-sm"
               onClick={markAllRead}
-              disabled={unreadInFilter === 0}
-              style={{ color: unreadInFilter > 0 ? "var(--gold)" : "var(--text-muted)", opacity: unreadInFilter > 0 ? 1 : 0.5 }}
+              disabled={unreadCount === 0}
+              style={{ color: unreadCount > 0 ? "var(--gold)" : "var(--text-muted)", opacity: unreadCount > 0 ? 1 : 0.5 }}
             >
               <CheckCheck size={12} strokeWidth={1.5} />
               全部已读
@@ -116,30 +92,6 @@ export default function NotificationCenter({ open, onClose }: Props) {
         ) : undefined
       }
     >
-      {/* 分类筛选 */}
-      {history.length > 0 && (
-        <div
-          className="flex gap-1 mb-3 p-1 rounded-md"
-          style={{ background: "var(--bg-surface-alt)" }}
-        >
-          {filters.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => setFilter(key)}
-              className="flex-1 px-2 py-1 rounded text-[11px] transition-all"
-              style={{
-                background: filter === key ? "var(--bg-elevated)" : "transparent",
-                color: filter === key ? "var(--gold)" : "var(--text-muted)",
-                cursor: "pointer",
-                border: "none",
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {historyLoading ? (
         <div
           className="text-center py-8 text-xs"
@@ -147,7 +99,7 @@ export default function NotificationCenter({ open, onClose }: Props) {
         >
           加载中…
         </div>
-      ) : filtered.length === 0 ? (
+      ) : history.length === 0 ? (
         <div className="text-center py-8">
           <Bell
             size={28}
@@ -156,12 +108,12 @@ export default function NotificationCenter({ open, onClose }: Props) {
             style={{ color: "var(--text-muted)" }}
           />
           <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
-            {filter === "all" ? "暂无通知" : "该分类暂无通知"}
+            暂无通知
           </p>
         </div>
       ) : (
-        <div className="space-y-0.5 -mx-1 max-h-80 overflow-y-auto">
-          {filtered.map((n) => {
+        <div className="space-y-0.5 -mx-1">
+          {history.map((n) => {
             const Icon = typeIconMap[n.type] || Info;
             const color = typeColorMap[n.type] || "var(--gold)";
             const clickable = !!n.link;
@@ -171,21 +123,12 @@ export default function NotificationCenter({ open, onClose }: Props) {
                 key={n.id}
                 className={`flex items-start gap-3 px-3 py-2 rounded-md transition-all ${
                   clickable ? "cursor-pointer" : ""
-                } ${n.read ? "opacity-60" : ""}`}
-                style={{
-                  background: n.read ? "transparent" : "var(--gold-glow)",
-                }}
+                } ${n.read ? "opacity-60" : ""} ${
+                  n.read ? "" : "bg-[var(--gold-glow)]"
+                } ${
+                  (!n.read || clickable) ? "hover-gold-bg" : ""
+                }`}
                 onClick={() => handleNotificationClick(n)}
-                onMouseEnter={(e) => {
-                  if (!n.read || clickable) {
-                    e.currentTarget.style.background = "var(--gold-glow)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (n.read) {
-                    e.currentTarget.style.background = "transparent";
-                  }
-                }}
               >
                 <span
                   className="inline-flex items-center justify-center w-6 h-6 rounded-full shrink-0 mt-0.5"
@@ -228,7 +171,7 @@ export default function NotificationCenter({ open, onClose }: Props) {
                     className="text-[9px] mt-1"
                     style={{ color: "var(--text-muted)" }}
                   >
-                    {formatTime(n.created_at)}
+                    {formatTimeRelative(n.created_at)}
                   </p>
                 </div>
                 {!n.read && (
@@ -251,25 +194,4 @@ export default function NotificationCenter({ open, onClose }: Props) {
       )}
     </Modal>
   );
-}
-
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const diff = now.getTime() - d.getTime();
-
-    if (diff < 60_000) return "刚刚";
-    if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3600_000)} 小时前`;
-
-    return d.toLocaleDateString("zh-CN", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
-  }
 }

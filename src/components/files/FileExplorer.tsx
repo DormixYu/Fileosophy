@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { FolderEntry } from "@/types";
 import { fileApi, projectApi } from "@/lib/tauri-api";
+import { formatSize } from "@/lib/formatUtils";
 import { useNotificationStore } from "@/stores/useNotificationStore";
 
 interface Props {
@@ -48,7 +49,7 @@ function FolderTree({ folderPath }: { folderPath: string }) {
   if (loading) {
     return (
       <div className="text-center py-6 text-xs" style={{ color: "var(--text-muted)" }}>
-        加载中…
+        加载中...
       </div>
     );
   }
@@ -89,28 +90,21 @@ function TreeNode({
 }) {
   const [expanded, setExpanded] = useState(false);
 
-  const formatSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  };
-
   if (entry.is_dir) {
     return (
       <div>
         <div
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md cursor-pointer transition-colors select-none"
+          className="flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer transition-all select-none hover-surface-alt-bg"
           style={{ paddingLeft: `${depth * 16 + 8}px` }}
           onClick={() => setExpanded(!expanded)}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-surface-alt)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         >
+          {/* 展开/折叠箭头 — 展开态鎏金 */}
           {expanded ? (
-            <ChevronDown size={13} strokeWidth={1.5} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+            <ChevronDown size={13} strokeWidth={1.5} style={{ color: "var(--gold)", flexShrink: 0 }} />
           ) : (
             <ChevronRight size={13} strokeWidth={1.5} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
           )}
+          {/* 文件夹图标 — 鎏金 */}
           {expanded ? (
             <FolderOpen size={14} strokeWidth={1.5} style={{ color: "var(--gold)", flexShrink: 0 }} />
           ) : (
@@ -119,6 +113,19 @@ function TreeNode({
           <span className="text-xs truncate" style={{ color: "var(--text-primary)" }}>
             {entry.name}
           </span>
+          {/* 子项计数徽标（折叠态显示） */}
+          {entry.children.length > 0 && !expanded && (
+            <span
+              className="badge shrink-0 ml-1"
+              style={{
+                background: "var(--gold-glow)",
+                color: "var(--gold)",
+                fontSize: "10px",
+              }}
+            >
+              {entry.children.length}
+            </span>
+          )}
         </div>
         {expanded && (
           <div>
@@ -133,17 +140,19 @@ function TreeNode({
 
   return (
     <div
-      className="flex items-center gap-2 px-2 py-1 rounded-md cursor-pointer transition-colors select-none group"
+      className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-all select-none group hover-surface-alt-bg"
       style={{ paddingLeft: `${depth * 16 + 8 + 13 + 4}px` }}
       onDoubleClick={() => onOpenFile(entry.path)}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-surface-alt)")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
+      {/* 文件图标 — muted 色 */}
       <FileIcon size={14} strokeWidth={1.5} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
       <span className="flex-1 text-xs truncate" style={{ color: "var(--text-primary)" }}>
         {entry.name}
       </span>
-      <span className="text-[10px] font-mono opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--text-muted)" }}>
+      <span
+        className="text-[10px] font-mono opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+        style={{ color: "var(--text-muted)" }}
+      >
         {formatSize(entry.size)}
       </span>
     </div>

@@ -1,7 +1,8 @@
-use super::projects::DbConn;
+use crate::db::DbConn;
 use crate::db::models::User;
+use crate::events;
 use std::fs;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 #[tauri::command]
 pub fn get_current_user(db: State<'_, DbConn>) -> Result<Option<User>, String> {
@@ -41,6 +42,7 @@ pub fn get_current_user(db: State<'_, DbConn>) -> Result<Option<User>, String> {
 
 #[tauri::command]
 pub fn create_or_update_user(
+    app: AppHandle,
     db: State<'_, DbConn>,
     name: String,
     avatar_path: Option<String>,
@@ -78,6 +80,7 @@ pub fn create_or_update_user(
                 },
             ).map_err(|e| e.to_string())?;
 
+            let _ = app.emit(events::EVENT_USER_UPDATED, user.id);
             Ok(user)
         }
         None => {
@@ -110,6 +113,7 @@ pub fn create_or_update_user(
                 },
             ).map_err(|e| e.to_string())?;
 
+            let _ = app.emit(events::EVENT_USER_UPDATED, user.id);
             Ok(user)
         }
     }
@@ -132,7 +136,7 @@ pub fn upload_avatar(
 
     fs::create_dir_all(&avatars_dir).map_err(|e| format!("创建头像目录失败: {e}"))?;
 
-    let filename = format!("avatar_{}.png", chrono_timestamp());
+    let filename = format!("avatar_{}{}", chrono_timestamp(), avatar_extension(&image_data));
     let filepath = avatars_dir.join(&filename);
     fs::write(&filepath, &bytes).map_err(|e| format!("保存头像失败: {e}"))?;
 
@@ -155,6 +159,7 @@ pub fn upload_avatar(
             rusqlite::params![path_str, id],
         )
         .map_err(|e| e.to_string())?;
+        let _ = app.emit(events::EVENT_USER_UPDATED, id);
     }
 
     Ok(path_str)
@@ -180,4 +185,28 @@ fn chrono_timestamp() -> String {
         .unwrap_or_default()
         .as_millis()
         .to_string()
+}
+
+/// 从 data URL 的 MIME 类型提取文件扩展名
+fn avatar_extension(data: &str) -> String {
+    if let Some(idx) = data.find(';') {
+        let mime = &data[..idx];
+        // 提取 "data:image/png" 中的 "image/png" 部分
+        let mime_type = if let Some(colon_pos) = mime.find(':') {
+            &mime[colon_pos + 1..]
+        } else {
+            mime
+        };
+        match mime_type {
+            "image/jpeg" | "image/jpg" => ".jpg".to_string(),
+            "image/png" => ".png".to_string(),
+            "image/gif" => ".gif".to_string(),
+            "image/webp" => ".webp".to_string(),
+            "image/svg+xml" => ".svg".to_string(),
+            "image/bmp" => ".bmp".to_string(),
+            _ => ".png".to_string(),
+        }
+    } else {
+        ".png".to_string()
+    }
 }

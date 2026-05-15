@@ -1,27 +1,30 @@
 import { create } from "zustand";
 import { shareApi, fileApi, settingsApi, systemApi } from "@/lib/tauri-api";
-import type { SavedConnection, Peer, ClientInfo, RemoteDirEntry } from "@/types";
+import type { SavedConnection, Peer, ClientInfo, RemoteDirEntry, ActivityLogEntry } from "@/types";
 
 interface ShareState {
-  shareStatus: { port: number; path: string } | null;
+  shareStatus: { port: number; path: string }[];
   localIp: string;
   savedConnections: SavedConnection[];
   peers: Peer[];
   connectedClients: ClientInfo[];
+  activityLog: ActivityLogEntry[];
 
   fetchShareStatus: () => Promise<void>;
   startShare: (path: string, password: string) => Promise<number>;
-  stopShare: () => Promise<void>;
+  stopShare: (port: number) => Promise<void>;
 
   fetchConnections: () => Promise<void>;
   addConnection: (addr: string, password: string, label?: string) => Promise<void>;
   removeConnection: (addr: string) => Promise<void>;
-  reconnect: (addr: string, password: string) => Promise<void>;
+  reconnect: (addr: string) => Promise<void>;
   updateLastPath: (addr: string, path: string) => Promise<void>;
 
   fetchPeers: () => Promise<void>;
   fetchLocalIp: () => Promise<void>;
-  fetchConnectedClients: () => Promise<void>;
+  fetchConnectedClients: (port: number) => Promise<void>;
+  fetchActivityLog: (port: number) => Promise<void>;
+  uploadRemote: (addr: string, password: string, remoteDir: string, fileName: string, localPath: string) => Promise<void>;
 }
 
 const saveConnectionsToSettings = async (connections: SavedConnection[]) => {
@@ -30,11 +33,12 @@ const saveConnectionsToSettings = async (connections: SavedConnection[]) => {
 };
 
 export const useShareStore = create<ShareState>((set, get) => ({
-  shareStatus: null,
+  shareStatus: [],
   localIp: "",
   savedConnections: [],
   peers: [],
   connectedClients: [],
+  activityLog: [],
 
   fetchShareStatus: async () => {
     const status = await shareApi.getStatus();
@@ -47,9 +51,10 @@ export const useShareStore = create<ShareState>((set, get) => ({
     return port;
   },
 
-  stopShare: async () => {
-    await shareApi.stop();
-    set({ shareStatus: null, connectedClients: [] });
+  stopShare: async (port: number) => {
+    await shareApi.stop(port);
+    await get().fetchShareStatus();
+    set({ connectedClients: [], activityLog: [] });
   },
 
   fetchConnections: async () => {
@@ -83,7 +88,6 @@ export const useShareStore = create<ShareState>((set, get) => ({
 
     const conn: SavedConnection = {
       addr,
-      password,
       label: finalLabel,
       last_connected: new Date().toISOString(),
       last_path: "",
@@ -99,8 +103,7 @@ export const useShareStore = create<ShareState>((set, get) => ({
     await saveConnectionsToSettings(connections);
   },
 
-  reconnect: async (addr: string, password: string) => {
-    await shareApi.join(addr, password);
+  reconnect: async (addr: string) => {
     const connections = get().savedConnections.map((c) =>
       c.addr === addr ? { ...c, last_connected: new Date().toISOString() } : c
     );
@@ -126,8 +129,17 @@ export const useShareStore = create<ShareState>((set, get) => ({
     set({ localIp: ip });
   },
 
-  fetchConnectedClients: async () => {
-    const clients = await shareApi.getConnectedClients();
+  fetchConnectedClients: async (port: number) => {
+    const clients = await shareApi.getConnectedClients(port);
     set({ connectedClients: clients });
+  },
+
+  fetchActivityLog: async (port: number) => {
+    const log = await shareApi.getActivityLog(port);
+    set({ activityLog: log });
+  },
+
+  uploadRemote: async (addr: string, password: string, remoteDir: string, fileName: string, localPath: string) => {
+    await shareApi.uploadRemote(addr, password, remoteDir, fileName, localPath);
   },
 }));

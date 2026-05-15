@@ -14,6 +14,9 @@ pub fn init_database(app: &AppHandle) -> Result<Connection, String> {
     // 启用外键约束
     conn.execute_batch("PRAGMA foreign_keys = ON;")
         .map_err(|e| e.to_string())?;
+    // 启用 WAL 模式和忙碌超时
+    conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;")
+        .map_err(|e| e.to_string())?;
 
     // 运行迁移
     run_migrations(&conn).map_err(|e| e.to_string())?;

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { Search, Diamond, Plus, Pencil, Trash2 } from "lucide-react";
+import { Search, Diamond } from "lucide-react";
 import { useProjectStore } from "@/stores/useProjectStore";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { useNotificationStore } from "@/stores/useNotificationStore";
 import { projectApi } from "@/lib/tauri-api";
 import type {
   Project,
@@ -10,8 +9,7 @@ import type {
   ProjectStatusHistory,
   ProjectMilestone,
 } from "@/types";
-import { DEFAULT_PROJECT_STATUSES } from "@/types";
-import Modal from "@/components/common/Modal";
+import { formatDate } from "@/lib/formatUtils";
 import {
   ViewMode,
   VIEW_BASE,
@@ -24,19 +22,17 @@ import {
   BAR_TOP,
   daysBetween,
   addDays,
-  formatDate,
-  formatDateTime,
   getToday,
   formatLocalDate,
   buildSegments,
-  buildPreviewSegments,
-  INITIAL_STATUS,
 } from "@/lib/ganttUtils";
-import DatePicker from "@/components/common/DatePicker";
+import GanttTooltip from "@/components/gantt/GanttTooltip";
+import MilestoneModal from "@/components/gantt/MilestoneModal";
+import StatusHistoryModal from "@/components/gantt/StatusHistoryModal";
 
 export default function GanttPage() {
   const { projects, fetchProjects, loading } = useProjectStore();
-  const { settings } = useSettingsStore();
+  const { parsedStatuses } = useSettingsStore();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [dayWidth, setDayWidth] = useState(VIEW_BASE.day);
@@ -76,7 +72,7 @@ export default function GanttPage() {
   }, [fetchProjects]);
 
   useEffect(() => {
-    fetchProjects();
+    if (projects.length === 0) fetchProjects();
     Promise.all([
       projectApi.getAllStatusHistories(),
       projectApi.getAllMilestones(),
@@ -84,20 +80,11 @@ export default function GanttPage() {
       setHistories(h);
       setMilestones(m);
     });
-  }, [fetchProjects]);
-
-  const statuses: ProjectStatusConfig[] = useMemo(() => {
-    try {
-      const raw = settings["project_statuses"];
-      return raw ? JSON.parse(raw) : DEFAULT_PROJECT_STATUSES;
-    } catch {
-      return DEFAULT_PROJECT_STATUSES;
-    }
-  }, [settings]);
+  }, [projects.length, fetchProjects]);
 
   const getStatusConfig = useCallback(
-    (statusId?: string) => statuses.find((s) => s.id === statusId),
-    [statuses],
+    (statusId?: string | null) => parsedStatuses.find((s) => s.id === statusId),
+    [parsedStatuses],
   );
 
   const milestonesByProject = useMemo(() => {
@@ -111,7 +98,7 @@ export default function GanttPage() {
   }, [milestones]);
 
   // 从完整配置提取可用状态（而非仅从 projects 中已有的）
-  const availableStatuses = useMemo(() => statuses.map((s) => s.id), [statuses]);
+  const availableStatuses = useMemo(() => parsedStatuses.map((s) => s.id), [parsedStatuses]);
 
   // 可用分类列表
   const availableTypes = useMemo(() => {
@@ -255,7 +242,7 @@ export default function GanttPage() {
   const chartWidth = totalDays * dayWidth;
 
   return (
-    <div className="flex flex-col h-full animate-slide-up">
+    <div className="flex flex-col h-full animate-fade-up">
       {/* 页头 + 工具栏 */}
       <div
         className="flex items-center gap-3 px-6 h-14 shrink-0 border-b"
@@ -264,9 +251,12 @@ export default function GanttPage() {
           borderColor: "var(--border-light)",
         }}
       >
-        <h1 className="text-title" style={{ color: "var(--text-primary)" }}>
-          甘特图
-        </h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-title font-serif" style={{ color: "var(--text-primary)" }}>
+            全局甘特图
+          </h1>
+          <span className="w-8 h-px" style={{ background: "var(--gold)" }} />
+        </div>
         <span className="text-xs" style={{ color: "var(--text-muted)" }}>
           {filteredProjects.length} 个项目
         </span>
@@ -274,14 +264,8 @@ export default function GanttPage() {
         <div className="flex-1" />
 
         {/* 搜索 */}
-        <div
-          className="flex items-center gap-1.5 px-2 py-1 rounded text-xs"
-          style={{
-            background: "var(--bg-surface-alt)",
-            border: "1px solid var(--border-light)",
-          }}
-        >
-          <Search size={12} strokeWidth={1.5} style={{ color: "var(--text-tertiary)" }} />
+        <div className="flex items-center gap-1.5 input-base !py-1 !px-2 !text-xs !rounded-md">
+          <Search size={12} strokeWidth={1.5} style={{ color: "var(--text-muted)" }} />
           <input
             type="text"
             placeholder="搜索项目…"
@@ -295,11 +279,11 @@ export default function GanttPage() {
         {/* 状态筛选 */}
         <div className="relative">
           <button
-            className="text-xs px-2 py-1 rounded"
+            className="text-xs px-2.5 py-1 rounded-md transition-all hover-gold-border"
             style={{
               background: statusFilter.size > 0 ? "var(--gold-glow)" : "var(--bg-surface-alt)",
               border: "1px solid var(--border-light)",
-              color: "var(--text-secondary)",
+              color: statusFilter.size > 0 ? "var(--gold)" : "var(--text-secondary)",
             }}
             onClick={() => setShowStatusDropdown(!showStatusDropdown)}
           >
@@ -320,11 +304,11 @@ export default function GanttPage() {
         {/* 分类筛选 */}
         <div className="relative">
           <button
-            className="text-xs px-2 py-1 rounded"
+            className="text-xs px-2.5 py-1 rounded-md transition-all hover-gold-border"
             style={{
               background: typeFilter.size > 0 ? "var(--gold-glow)" : "var(--bg-surface-alt)",
               border: "1px solid var(--border-light)",
-              color: "var(--text-secondary)",
+              color: typeFilter.size > 0 ? "var(--gold)" : "var(--text-secondary)",
             }}
             onClick={() => setShowTypeDropdown(!showTypeDropdown)}
           >
@@ -346,19 +330,19 @@ export default function GanttPage() {
 
         {/* 视图模式：日/月/年 */}
         <div
-          className="flex items-center rounded overflow-hidden"
-          style={{ border: "1px solid var(--border-light)" }}
+          className="flex items-center gap-0.5 p-0.5 rounded-full"
+          style={{ background: "var(--bg-surface-alt)" }}
         >
-          {(["day", "month", "year"] as ViewMode[]).map((level, idx) => {
+          {(["day", "month", "year"] as ViewMode[]).map((level) => {
             const isActive = currentViewMode === level;
             return (
               <button
                 key={level}
-                className="text-[11px] px-2.5 py-1 transition-colors"
+                className={`text-[11px] px-3 py-1 rounded-full transition-all ${isActive ? "" : "hover-gold-text"}`}
                 style={{
-                  background: isActive ? "var(--gold-glow)" : "transparent",
-                  color: isActive ? "var(--gold)" : "var(--text-tertiary)",
-                  borderRight: idx < 2 ? "1px solid var(--border-light)" : "none",
+                  background: isActive ? "var(--gold-glow-strong)" : "transparent",
+                  color: isActive ? "var(--gold)" : "var(--text-muted)",
+                  boxShadow: isActive ? "var(--shadow-gold)" : "none",
                 }}
                 onClick={() => setDayWidth(VIEW_BASE[level])}
               >
@@ -370,12 +354,7 @@ export default function GanttPage() {
 
         {/* 回到今天 */}
         <button
-          className="text-xs px-2 py-1 rounded transition-colors"
-          style={{
-            background: "var(--bg-surface-alt)",
-            border: "1px solid var(--border-light)",
-            color: "var(--text-secondary)",
-          }}
+          className="btn btn-outline btn-sm hover-gold-text"
           onClick={scrollToToday}
         >
           今天
@@ -412,10 +391,10 @@ export default function GanttPage() {
                   ? yearMonthLabels.map((m, i) => (
                       <div
                         key={i}
-                        className="shrink-0 text-center font-medium py-1 border-r whitespace-nowrap overflow-hidden"
+                        className="shrink-0 text-center font-serif font-medium py-1 border-r whitespace-nowrap overflow-hidden"
                         style={{
                           width: m.span * dayWidth,
-                          color: "var(--text-muted)",
+                          color: "var(--text-secondary)",
                           borderColor: "var(--border-light)",
                           fontSize: dayWidth < 2 ? 7 : 8,
                         }}
@@ -426,10 +405,10 @@ export default function GanttPage() {
                   : monthLabels.map((m, i) => (
                       <div
                         key={i}
-                        className="shrink-0 text-center text-[10px] font-medium py-1 border-r whitespace-nowrap overflow-hidden"
+                        className="shrink-0 text-center text-[10px] font-serif font-medium py-1 border-r whitespace-nowrap overflow-hidden"
                         style={{
                           width: m.span * dayWidth,
-                          color: "var(--text-muted)",
+                          color: "var(--text-secondary)",
                           borderColor: "var(--border-light)",
                         }}
                       >
@@ -462,7 +441,7 @@ export default function GanttPage() {
                     return (
                       <div
                         key={i}
-                        className="shrink-0 text-center text-[9px] py-0.5 border-r"
+                        className="shrink-0 text-center text-[9px] font-mono py-0.5 border-r"
                         style={{
                           width: dayWidth,
                           fontWeight: d === 1 ? 600 : 400,
@@ -521,7 +500,7 @@ export default function GanttPage() {
 
       {/* 工具提示浮窗 */}
       {hoveredProject && (
-        <TooltipPopup
+        <GanttTooltip
           project={hoveredProject}
           rowIndex={hoveredRowIndex}
           containerRef={containerRef}
@@ -548,7 +527,7 @@ export default function GanttPage() {
         <StatusHistoryModal
           project={editingProject}
           histories={histories.filter((h) => h.project_id === editingProject.id)}
-          statuses={statuses}
+          statuses={parsedStatuses}
           onClose={() => setEditingProject(null)}
           onRefresh={refreshHistories}
         />
@@ -575,7 +554,7 @@ function GanttRow({
   minDate: string;
   totalDays: number;
   dayWidth: number;
-  getStatusConfig: (id?: string) => ProjectStatusConfig | undefined;
+  getStatusConfig: (id?: string | null) => ProjectStatusConfig | undefined;
   histories: ProjectStatusHistory[];
   milestones: ProjectMilestone[];
   onEditStatusHistory: () => void;
@@ -593,14 +572,8 @@ function GanttRow({
 
   return (
     <div
-      className="flex items-center group"
+      className="flex items-center group transition-colors hover-elevated-bg"
       style={{ height: ROW_HEIGHT }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "var(--bg-elevated)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "transparent";
-      }}
     >
       {/* 冻结项目名称列 + 状态色点 */}
       <div
@@ -691,140 +664,12 @@ function GanttRow({
             >
               <div
                 className="w-2.5 h-2.5 rotate-45"
-                style={{ background: "var(--gold)" }}
+                style={{ background: "var(--gold)", filter: "drop-shadow(0 0 4px var(--gold))" }}
               />
             </div>
           );
         })}
       </div>
-    </div>
-  );
-}
-
-// ── TooltipPopup ──────────────────────────────────────────────────
-
-function TooltipPopup({
-  project,
-  rowIndex,
-  containerRef,
-  minDate,
-  dayWidth,
-  getStatusConfig,
-  histories,
-  onClose,
-}: {
-  project: Project;
-  rowIndex: number;
-  containerRef: React.RefObject<HTMLDivElement>;
-  minDate: string;
-  dayWidth: number;
-  getStatusConfig: (id?: string) => ProjectStatusConfig | undefined;
-  histories: ProjectStatusHistory[];
-  onClose: () => void;
-}) {
-  const config = getStatusConfig(project.status);
-  const sortedHistories = [...histories].sort(
-    (a, b) => b.changed_at.localeCompare(a.changed_at),
-  );
-
-  // 根据项目行和甘特条位置计算 tooltip 定位
-  const barStartOffset = project.start_date
-    ? daysBetween(minDate, project.start_date) * dayWidth + NAME_WIDTH
-    : 0;
-  const barCenterX = barStartOffset + 120; // 偏移条中心
-  const barTopY = rowIndex * ROW_HEIGHT + ROW_HEIGHT / 2;
-
-  const containerEl = containerRef.current;
-  const scrollLeft = containerEl?.scrollLeft || 0;
-  const scrollTop = containerEl?.scrollTop || 0;
-
-  const style: React.CSSProperties = {
-    position: "fixed",
-    left: Math.min(barCenterX - scrollLeft + 60, window.innerWidth - 260),
-    top: Math.max(8, (barTopY - scrollTop + (containerEl?.getBoundingClientRect().top ?? 0)) - 140),
-    zIndex: 100,
-    width: 240,
-  };
-
-  return (
-    <div
-      className="rounded-lg p-3 shadow-lg text-xs"
-      style={{
-        ...style,
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border-light)",
-      }}
-      onMouseLeave={onClose}
-    >
-      <div className="font-medium text-sm mb-2" style={{ color: "var(--text-primary)" }}>
-        {project.name}
-      </div>
-
-      <div className="space-y-1">
-        <Row label="编号" value={project.project_number || "—"} />
-        <Row
-          label="状态"
-          value={
-            <span
-              className="inline-flex items-center gap-1"
-              style={{ color: config?.color }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full inline-block"
-                style={{ background: config?.color }}
-              />
-              {config?.name || project.status || "—"}
-            </span>
-          }
-        />
-        <Row label="分类" value={project.project_type || "—"} />
-        <Row label="开始日期" value={formatDate(project.start_date || "")} />
-        <Row label="截止日期" value={formatDate(project.end_date || "")} />
-      </div>
-
-      {sortedHistories.length > 0 && (
-        <div className="mt-2 pt-2 border-t" style={{ borderColor: "var(--border-light)" }}>
-          <div className="text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>
-            状态变更历史
-          </div>
-          <div className="space-y-0.5">
-            {sortedHistories.slice(0, 5).map((h) => {
-              const sc = getStatusConfig(h.status);
-              return (
-                <div key={h.id} className="flex items-center gap-1.5 text-[10px]">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ background: sc?.color || "#94a3b8" }}
-                  />
-                  <span style={{ color: "var(--text-secondary)" }}>
-                    {sc?.name || h.status}
-                  </span>
-                  <span style={{ color: "var(--text-tertiary)" }}>
-                    {formatDateTime(h.changed_at)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-12 shrink-0 text-[10px]" style={{ color: "var(--text-muted)" }}>
-        {label}
-      </span>
-      <span style={{ color: "var(--text-secondary)" }}>{value}</span>
     </div>
   );
 }
@@ -850,16 +695,17 @@ function Dropdown({
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="absolute right-0 top-full mt-1 z-50 rounded-lg p-2 shadow-lg min-w-[140px]"
+        className="absolute right-0 top-full mt-1 z-50 rounded-lg p-2 min-w-[140px] animate-fade-in"
         style={{
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border-light)",
+          background: "var(--bg-elevated)",
+          border: "1px solid var(--border-default)",
+          boxShadow: "var(--shadow-gold-lg)",
         }}
       >
         {items.map((item) => (
           <label
             key={item}
-            className="flex items-center gap-2 px-2 py-1 rounded text-xs cursor-pointer hover:bg-[var(--bg-surface-alt)]"
+            className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs cursor-pointer transition-colors hover-gold-bg"
             style={{ color: "var(--text-secondary)" }}
           >
             <input
@@ -878,369 +724,11 @@ function Dropdown({
           </label>
         ))}
         {items.length === 0 && (
-          <div className="text-[10px] px-2 py-1" style={{ color: "var(--text-tertiary)" }}>
+          <div className="text-[10px] px-2 py-1.5" style={{ color: "var(--text-muted)" }}>
             无可用选项
           </div>
         )}
       </div>
     </>
-  );
-}
-
-// ── MilestoneModal ──────────────────────────────────────────────────
-
-function MilestoneModal({
-  project,
-  milestones,
-  onClose,
-  onRefresh,
-}: {
-  project: Project;
-  milestones: ProjectMilestone[];
-  onClose: () => void;
-  onRefresh: () => void;
-}) {
-  const { addToast } = useNotificationStore();
-  const [editing, setEditing] = useState<ProjectMilestone | null>(null);
-  const [name, setName] = useState("");
-  const [date, setDate] = useState("");
-  const [description, setDescription] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const resetForm = () => {
-    setEditing(null);
-    setName("");
-    setDate("");
-    setDescription("");
-  };
-
-  const startEdit = (ms: ProjectMilestone) => {
-    setEditing(ms);
-    setName(ms.name);
-    setDate(ms.date);
-    setDescription(ms.description || "");
-  };
-
-  const handleSave = async () => {
-    if (!name.trim() || !date) return;
-    setSaving(true);
-    try {
-      if (editing) {
-        await projectApi.updateMilestone(editing.id, {
-          name: name.trim(),
-          date,
-          description: description || undefined,
-        });
-      } else {
-        await projectApi.addMilestone({
-          project_id: project.id,
-          name: name.trim(),
-          date,
-          description: description || undefined,
-        });
-      }
-      onRefresh();
-      resetForm();
-      addToast({ type: "success", title: editing ? "里程碑已更新" : "里程碑已添加", message: name.trim() });
-    } catch (e) {
-      addToast({ type: "error", title: "操作失败", message: String(e) });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    try {
-      await projectApi.deleteMilestone(id);
-      onRefresh();
-      addToast({ type: "success", title: "里程碑已删除", message: "" });
-    } catch (e) {
-      addToast({ type: "error", title: "删除失败", message: String(e) });
-    }
-  };
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`${project.name} — 里程碑管理`}
-      footer={
-        <button className="btn btn-ghost btn-sm" onClick={onClose}>
-          关闭
-        </button>
-      }
-    >
-      <div className="space-y-4">
-        <div className="space-y-1 max-h-48 overflow-auto">
-          {milestones.length === 0 ? (
-            <p className="text-xs py-2" style={{ color: "var(--text-tertiary)" }}>
-              暂无里程碑
-            </p>
-          ) : (
-            milestones.map((ms) => (
-              <div
-                key={ms.id}
-                className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs"
-                style={{ color: "var(--text-primary)" }}
-              >
-                <Diamond size={10} strokeWidth={1.5} style={{ color: "var(--gold)", flexShrink: 0 }} />
-                <span className="flex-1 truncate">{ms.name}</span>
-                <span style={{ color: "var(--text-tertiary)" }}>{ms.date}</span>
-                <button
-                  className="p-0.5 rounded transition-colors"
-                  style={{ color: "var(--text-muted)" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "var(--gold)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-                  onClick={() => startEdit(ms)}
-                >
-                  <Pencil size={11} strokeWidth={1.5} />
-                </button>
-                <button
-                  className="p-0.5 rounded transition-colors"
-                  style={{ color: "var(--text-muted)" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-danger)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-                  onClick={() => handleDelete(ms.id)}
-                >
-                  <Trash2 size={11} strokeWidth={1.5} />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div
-          className="rounded-md p-3 space-y-2"
-          style={{ background: "var(--bg-surface-alt)", border: "1px solid var(--border-light)" }}
-        >
-          <div className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
-            {editing ? "编辑里程碑" : "新增里程碑"}
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="名称"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="flex-1 px-2 py-1 text-xs rounded outline-none"
-              style={{
-                background: "var(--bg-surface)",
-                border: "1px solid var(--border-default)",
-                color: "var(--text-primary)",
-              }}
-            />
-            <DatePicker value={date} onChange={setDate} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }} />
-          </div>
-          <input
-            type="text"
-            placeholder="描述（可选）"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-2 py-1 text-xs rounded outline-none"
-            style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border-default)",
-              color: "var(--text-primary)",
-            }}
-          />
-          <div className="flex gap-2 justify-end">
-            {editing && (
-              <button className="btn btn-ghost btn-sm" onClick={resetForm}>
-                取消
-              </button>
-            )}
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={handleSave}
-              disabled={saving || !name.trim() || !date}
-            >
-              <Plus size={12} strokeWidth={1.5} />
-              {saving ? "保存中..." : editing ? "更新" : "添加"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// ── StatusHistoryModal ──────────────────────────────────────────────
-
-function StatusHistoryModal({
-  project,
-  histories,
-  statuses,
-  onClose,
-  onRefresh,
-}: {
-  project: Project;
-  histories: ProjectStatusHistory[];
-  statuses: ProjectStatusConfig[];
-  onClose: () => void;
-  onRefresh: () => void;
-}) {
-  const { addToast } = useNotificationStore();
-  const [localItems, setLocalItems] = useState(() =>
-    [...histories].sort((a, b) => a.changed_at.localeCompare(b.changed_at)),
-  );
-  const [deletedIds, setDeletedIds] = useState<number[]>([]);
-  const [saving, setSaving] = useState(false);
-
-  const getStatusColor = (statusId: string) =>
-    statuses.find((s) => s.id === statusId)?.color || "#94a3b8";
-
-  const addItem = () => {
-    const today = getToday();
-    setLocalItems((prev) =>
-      [
-        ...prev,
-        { id: -Date.now(), project_id: project.id, status: project.status || INITIAL_STATUS, changed_at: today },
-      ].sort((a, b) => a.changed_at.localeCompare(b.changed_at)),
-    );
-  };
-
-  const updateItem = (id: number, field: "status" | "changed_at", value: string) => {
-    setLocalItems((prev) =>
-      prev.map((item) => item.id === id ? { ...item, [field]: value } : item),
-    );
-  };
-
-  const markDeleted = (id: number) => {
-    if (id > 0) setDeletedIds((prev) => [...prev, id]);
-    setLocalItems((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      for (const id of deletedIds) {
-        await projectApi.deleteStatusHistory(id);
-      }
-      for (const item of localItems) {
-        if (item.id < 0) {
-          await projectApi.addStatusHistory({
-            project_id: project.id,
-            status: item.status,
-            changed_at: item.changed_at,
-          });
-        } else {
-          await projectApi.updateStatusHistory(item.id, {
-            status: item.status,
-            changed_at: item.changed_at,
-          });
-        }
-      }
-      onRefresh();
-      onClose();
-      addToast({ type: "success", title: "状态历史已保存", message: project.name });
-    } catch (e) {
-      addToast({ type: "error", title: "保存失败", message: String(e) });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // 使用 ganttUtils 的 buildPreviewSegments 替代有 bug 的内联版本
-  const previewSegments = useMemo(
-    () => buildPreviewSegments(project, localItems, statuses),
-    [project, localItems, statuses],
-  );
-
-  const currentConfig = statuses.find((s) => s.id === project.status);
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`状态变更历史 — ${project.name}`}
-      footer={
-        <div className="flex gap-2 justify-end">
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>
-            取消
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-            {saving ? "保存中..." : "保存"}
-          </button>
-        </div>
-      }
-    >
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs" style={{ color: "var(--text-muted)" }}>当前状态</span>
-          <span
-            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-            style={{
-              background: getStatusColor(project.status || "") + "20",
-              color: getStatusColor(project.status || ""),
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: getStatusColor(project.status || "") }}
-            />
-            {currentConfig?.name || project.status || "—"}
-          </span>
-        </div>
-
-        <div className="space-y-1.5 max-h-64 overflow-auto">
-          {localItems.length === 0 ? (
-            <p className="text-xs py-2" style={{ color: "var(--text-tertiary)" }}>
-              暂无状态变更记录
-            </p>
-          ) : (
-            localItems.map((item) => (
-              <div key={item.id} className="flex items-center gap-2">
-                <DatePicker value={item.changed_at.split(" ")[0]} onChange={(v) => updateItem(item.id, "changed_at", v)} style={{ background: "var(--bg-surface)", border: "1px solid var(--border-default)", color: "var(--text-primary)" }} />
-                <select
-                  value={item.status}
-                  onChange={(e) => updateItem(item.id, "status", e.target.value)}
-                  className="px-2 py-1 text-xs rounded outline-none"
-                  style={{
-                    background: "var(--bg-surface)",
-                    border: "1px solid var(--border-default)",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {statuses.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: getStatusColor(item.status) }} />
-                <button
-                  className="p-0.5 rounded transition-colors shrink-0"
-                  style={{ color: "var(--text-muted)" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-danger)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-                  onClick={() => markDeleted(item.id)}
-                >
-                  <Trash2 size={11} strokeWidth={1.5} />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        <button
-          className="text-xs px-3 py-1.5 rounded transition-colors flex items-center gap-1"
-          style={{ background: "var(--gold-glow)", color: "var(--gold)", border: "1px solid var(--border-light)" }}
-          onClick={addItem}
-        >
-          <Plus size={11} strokeWidth={1.5} />
-          添加状态变更
-        </button>
-
-        <div className="border-t pt-3" style={{ borderColor: "var(--border-light)" }}>
-          <div className="text-[10px] mb-1.5" style={{ color: "var(--text-muted)" }}>色段预览</div>
-          <div className="flex rounded-sm overflow-hidden" style={{ height: 16 }}>
-            {previewSegments.map((seg, i) => (
-              <div
-                key={i}
-                style={{ width: `${seg.width}%`, background: seg.color, minWidth: 2 }}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </Modal>
   );
 }

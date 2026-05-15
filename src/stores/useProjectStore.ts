@@ -8,6 +8,7 @@ interface ProjectStore {
   loading: boolean;
   error: string | null;
   pendingCreateProject: boolean;
+  lastFetchTime: number;
 
   fetchProjects: () => Promise<void>;
   fetchProjectById: (id: number) => Promise<void>;
@@ -25,12 +26,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   loading: false,
   error: null,
   pendingCreateProject: false,
+  lastFetchTime: 0,
 
   fetchProjects: async () => {
+    const { projects, lastFetchTime } = get();
+    if (projects.length > 0 && Date.now() - lastFetchTime < 30000) return;
     set({ loading: true, error: null });
     try {
       const projects = await projectApi.getAll();
-      set({ projects, loading: false });
+      set({ projects, loading: false, lastFetchTime: Date.now() });
     } catch (e) {
       set({ error: String(e), loading: false });
     }

@@ -2,37 +2,18 @@ import { create } from "zustand";
 import type { Notification, NotificationPreferences } from "@/types";
 import { DEFAULT_NOTIFICATION_PREFERENCES } from "@/types";
 import { notificationHistoryApi } from "@/lib/tauri-api";
-
-export interface ToastItem {
-  id: string;
-  type: "info" | "success" | "warning" | "error" | "file-received";
-  title: string;
-  message: string;
-  createdAt: number;
-  link?: string;
-  prefKey?: keyof NotificationPreferences;
-}
-
-// 通知类型到偏好 key 的默认映射（仅在调用方未指定 prefKey 时使用）
-const TYPE_TO_PREF: Record<string, keyof NotificationPreferences> = {
-  "info": "project_status_changed",
-  "success": "project_created",
-  "warning": "project_deleted",
-  "error": "project_deleted",
-  "file-received": "file_received",
-};
+import { listen } from "@tauri-apps/api/event";
+import type { NotificationPayload, FileSharedPayload } from "@/types";
 
 interface NotificationState {
-  toasts: ToastItem[];
   history: Notification[];
   historyLoading: boolean;
   unreadCount: number;
   preferences: NotificationPreferences;
   preferencesLoaded: boolean;
+  listenersReady: boolean;
 
-  addToast: (toast: Omit<ToastItem, "id" | "createdAt"> & { link?: string; prefKey?: keyof NotificationPreferences }) => void;
-  removeToast: (id: string) => void;
-  clearAll: () => void;
+  addToast: (notif: { type: string; title: string; message: string; link?: string }) => void;
 
   fetchHistory: () => Promise<void>;
   markRead: (id: string) => Promise<void>;
@@ -41,73 +22,57 @@ interface NotificationState {
 
   fetchPreferences: () => Promise<void>;
   savePreferences: (prefs: NotificationPreferences) => Promise<void>;
+  setupListeners: () => void;
 }
 
-let nextId = 0;
-
 export const useNotificationStore = create<NotificationState>((set, get) => ({
-  toasts: [],
   history: [],
   historyLoading: false,
   unreadCount: 0,
   preferences: DEFAULT_NOTIFICATION_PREFERENCES,
   preferencesLoaded: false,
+  listenersReady: false,
 
-  addToast: (toast) => {
-    const { preferences } = get();
+  // 添加通知（写入历史 + 增加 unreadCount，不弹 Toast）
+  addToast: (notif) => {
+    const now = new Date().toISOString();
+    const record = {
+      id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: notif.type,
+      title: notif.title,
+      message: notif.message,
+      link: notif.link,
+      read: false,
+      created_at: now,
+    };
 
-    // 优先使用调用方指定的 prefKey，否则从 type 映射
-    const prefKey = toast.prefKey || TYPE_TO_PREF[toast.type];
+    // 立即加入本地 history
+    set((state) => ({
+      history: [record, ...state.history],
+      unreadCount: state.unreadCount + 1,
+    }));
 
-    // 若有 prefKey 且偏好关闭，则不弹 Toast
-    const shouldShow = !prefKey || preferences[prefKey];
-
-    const id = `toast-${Date.now()}-${++nextId}`;
-
-    if (shouldShow) {
-      const newToast: ToastItem = {
-        ...toast,
-        id,
-        createdAt: Date.now(),
-      };
-
-      set((state) => ({
-        toasts: [...state.toasts, newToast].slice(-5),
-      }));
-
-      // 5 秒后自动移除
-      setTimeout(() => {
-        set((state) => ({
-          toasts: state.toasts.filter((t) => t.id !== id),
-        }));
-      }, 5000);
-    }
-
-    // 持久化到后端历史（偏好关闭时仍记录，除非 prefKey 存在且偏好关闭）
+    // 持久化到后端（异步，不影响本地显示）
     notificationHistoryApi
       .add({
-        id,
-        type: toast.type,
-        title: toast.title,
-        message: toast.message,
-        link: toast.link,
+        id: record.id,
+        type: notif.type,
+        title: notif.title,
+        message: notif.message,
+        link: notif.link,
       })
       .catch((e) => console.error("Failed to persist notification:", e));
   },
-
-  removeToast: (id) =>
-    set((state) => ({
-      toasts: state.toasts.filter((t) => t.id !== id),
-    })),
-
-  clearAll: () => set({ toasts: [] }),
 
   fetchHistory: async () => {
     set({ historyLoading: true });
     try {
       const list = await notificationHistoryApi.getAll();
-      const unread = list.filter((n) => !n.read).length;
-      set({ history: list.reverse(), historyLoading: false, unreadCount: unread });
+      const reversed = list.reverse();
+      const backendIds = new Set(reversed.map((n) => n.id));
+      const localOnly = get().history.filter((n) => !backendIds.has(n.id));
+      const unread = reversed.filter((n) => !n.read).length + localOnly.filter((n) => !n.read).length;
+      set({ history: [...localOnly, ...reversed], historyLoading: false, unreadCount: unread });
     } catch (e) {
       console.error("Failed to fetch notification history:", e);
       set({ historyLoading: false });
@@ -163,5 +128,39 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     } catch (e) {
       console.error("Failed to save preferences:", e);
     }
+  },
+
+  // 设置后端事件监听（替代 ToastContainer 的监听逻辑）
+  setupListeners: () => {
+    if (get().listenersReady) return;
+
+    listen<NotificationPayload>("app-notification", (event) => {
+      const { addToast } = get();
+      addToast({
+        type: event.payload.type || "info",
+        title: event.payload.title,
+        message: event.payload.message,
+        link: event.payload.link,
+      });
+    }).catch((e) => console.error("Failed to listen app-notification:", e));
+
+    listen<FileSharedPayload>("file-shared", (event) => {
+      const { addToast } = get();
+      if (event.payload.status === "sent") {
+        addToast({
+          type: "success",
+          title: "文件已发送",
+          message: `已发送 "${event.payload.file_name}"`,
+        });
+      } else if (event.payload.status === "received") {
+        addToast({
+          type: "file-received",
+          title: "收到文件",
+          message: `来自 ${event.payload.peer_addr} 的文件已接收`,
+        });
+      }
+    }).catch((e) => console.error("Failed to listen file-shared:", e));
+
+    set({ listenersReady: true });
   },
 }));

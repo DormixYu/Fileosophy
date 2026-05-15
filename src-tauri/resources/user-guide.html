@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>飞序 · Fileosophy — 使用手册</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080808;
+      --surface: #131313;
+      --surface-2: #1c1c1c;
+      --accent: #c9a84c;
+      --accent-glow: rgba(201, 168, 76, 0.12);
+      --accent-dim: rgba(201, 168, 76, 0.06);
+      --text: #f0ece4;
+      --text-muted: #5a5550;
+      --text-dim: #3a3835;
+      --border: #1e1e1e;
+      --border-light: #2a2a2a;
+      --nav-bg: rgba(8, 8, 8, 0.85);
+      --icon-stroke: #f0ece4;
+      --curve-stroke: #c9a84c;
+      --radius: 10px;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f1e6;
+        --surface: #eae3d2;
+        --surface-2: #d4c9b2;
+        --accent: #9b7428;
+        --accent-glow: rgba(155, 116, 40, 0.10);
+        --accent-dim: rgba(155, 116, 40, 0.05);
+        --text: #1e1a14;
+        --text-muted: #4a4338;
+        --text-dim: #7a7160;
+        --border: #d4c9b2;
+        --border-light: #c4b9a2;
+        --nav-bg: rgba(246, 241, 230, 0.88);
+        --icon-stroke: #1e1a14;
+        --curve-stroke: #9b7428;
+      }
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background:
+        radial-gradient(ellipse at 50% 0%, var(--accent-glow) 0%, transparent 60%),
+        var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-weight: 300;
+      font-size: 13px;
+      line-height: 1.8;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 0 40px; }
+
+    .hero {
+      min-height: 60vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      position: relative;
+      padding: 80px 0 60px;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -55%);
+      pointer-events: none;
+    }
+
+    .hero-logo {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      position: relative;
+    }
+
+    .hero-icon {
+      width: 100px;
+      height: 100px;
+      opacity: 0;
+      animation: fadeUp 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    .hero-icon .thought-curve {
+      filter: drop-shadow(0 0 8px var(--accent-glow));
+    }
+
+    .hero-wordmark {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 300;
+      font-size: clamp(26px, 4.5vw, 38px);
+      letter-spacing: 0.42em;
+      text-transform: uppercase;
+      color: var(--text);
+      opacity: 0;
+      animation: fadeUp 1s cubic-bezier(0.22, 1, 0.36, 1) 0.15s forwards;
+    }
+
+    .hero-version {
+      font-size: 10px;
+      letter-spacing: 0.28em;
+      color: var(--text-dim);
+      opacity: 0;
+      animation: fadeUp 1s cubic-bezier(0.22, 1, 0.36, 1) 0.25s forwards;
+    }
+
+    .hero-tagline {
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: var(--text-muted);
+      margin-top: 4px;
+      opacity: 0;
+      animation: fadeUp 1s cubic-bezier(0.22, 1, 0.36, 1) 0.35s forwards;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .nav-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--nav-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 40px;
+      display: flex;
+      gap: 2px;
+      overflow-x: auto;
+    }
+
+    .nav-inner a {
+      text-decoration: none;
+      color: var(--text-muted);
+      padding: 14px 18px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      white-space: nowrap;
+      transition: color 0.25s;
+      border-bottom: 2px solid transparent;
+    }
+
+    .nav-inner a:hover {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    section {
+      padding: 80px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .section-label {
+      font-size: 9px;
+      letter-spacing: 0.35em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .section-title {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 300;
+      font-size: 28px;
+      letter-spacing: 0.08em;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .section-desc {
+      color: var(--text-muted);
+      font-size: 12px;
+      margin-bottom: 40px;
+    }
+
+    h3 {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 400;
+      font-size: 18px;
+      letter-spacing: 0.06em;
+      color: var(--text);
+      margin: 40px 0 16px;
+    }
+
+    h3:first-child { margin-top: 0; }
+
+    p { margin-bottom: 14px; color: var(--text-muted); }
+
+    ul, ol {
+      margin: 12px 0 16px 24px;
+      color: var(--text-muted);
+    }
+
+    li { margin-bottom: 8px; }
+
+    strong { color: var(--text); font-weight: 400; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    code {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 11px;
+      font-family: 'DM Mono', monospace;
+      color: var(--accent);
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      transition: border-color 0.3s, transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .feature-card:hover {
+      border-color: var(--accent-glow);
+      transform: translateY(-2px);
+    }
+
+    .feature-card .fc-icon {
+      font-size: 20px;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .feature-card h4 {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 400;
+      font-size: 16px;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin: 0;
+      line-height: 1.7;
+    }
+
+    .steps { counter-reset: step; margin: 20px 0; }
+
+    .step {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .step::before {
+      counter-increment: step;
+      content: counter(step);
+      color: var(--accent);
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 500;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .step-content { flex: 1; }
+
+    .step-content strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .step-content span {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .tip {
+      background: var(--accent-dim);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 16px 20px;
+      margin: 20px 0;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .tip strong { color: var(--accent); font-weight: 500; }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 12px;
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .data-table th {
+      color: var(--text-muted);
+      font-size: 9px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-weight: 400;
+    }
+
+    .data-table td { color: var(--text-muted); }
+    .data-table tr:last-child td { border-bottom: none; }
+
+    kbd {
+      background: var(--surface-2);
+      border: 1px solid var(--border-light);
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-family: 'DM Mono', monospace;
+      color: var(--text);
+      box-shadow: 0 1px 0 var(--border);
+    }
+
+    .faq-item {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 10px;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    .faq-item:hover { border-color: var(--border-light); }
+
+    .faq-q {
+      padding: 16px 20px;
+      color: var(--text);
+      font-weight: 400;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      background: var(--surface);
+      transition: background 0.2s;
+    }
+
+    .faq-q:hover { background: var(--surface-2); }
+
+    .faq-arrow {
+      color: var(--text-dim);
+      font-size: 10px;
+      transition: transform 0.3s;
+    }
+
+    .faq-item.open .faq-arrow { transform: rotate(180deg); }
+
+    .faq-a {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease, padding 0.35s ease;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.8;
+      padding: 0 20px;
+    }
+
+    .faq-item.open .faq-a {
+      max-height: 400px;
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .col-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+    }
+
+    .col-card h4 {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 400;
+      font-size: 16px;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .col-card p { font-size: 12px; }
+
+    .contact-card {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin: 20px 0;
+    }
+
+    .contact-icon {
+      width: 48px;
+      height: 48px;
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+      color: var(--accent);
+    }
+
+    .contact-info h4 {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 400;
+      font-size: 16px;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .contact-info p {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin: 0;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 48px 0;
+      border-top: 1px solid var(--border);
+      color: var(--text-dim);
+      font-size: 9px;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+    }
+
+    .footer a { color: var(--text-muted); }
+
+    [id] { scroll-margin-top: 70px; }
+
+    @media (max-width: 800px) {
+      .container { padding: 0 24px; }
+      .nav-inner { padding: 0 24px; }
+      .feature-grid { grid-template-columns: 1fr; }
+      .two-col { grid-template-columns: 1fr; }
+      section { padding: 56px 0; }
+      .hero { min-height: 50vh; padding: 60px 0 40px; }
+      .hero-icon { width: 72px; height: 72px; }
+    }
+  </style>
+</head>
+<body>
+
+<section class="hero">
+  <div class="hero-logo">
+    <svg class="hero-icon" viewBox="0 0 100 100" fill="none">
+      <path d="M26,8 L64,8 L82,26 L82,92 L26,92 Z"
+            style="stroke: var(--icon-stroke)" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M64,8 L64,26 L82,26"
+            style="stroke: var(--icon-stroke)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+      <line x1="36" y1="36" x2="56" y2="36" style="stroke: var(--icon-stroke)" stroke-width="1" opacity="0.25"/>
+      <line x1="36" y1="78" x2="54" y2="78" style="stroke: var(--icon-stroke)" stroke-width="1" opacity="0.25"/>
+      <line x1="36" y1="86" x2="46" y2="86" style="stroke: var(--icon-stroke)" stroke-width="1" opacity="0.25"/>
+      <path class="thought-curve"
+            d="M34,57 C40,36 52,36 52,53 C52,70 64,70 66,50"
+            style="stroke: var(--curve-stroke)" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+    <span class="hero-wordmark">Fileosophy</span>
+    <span class="hero-version">v1.0.0</span>
+    <span class="hero-tagline">在有序的体系中迸发思想的自由</span>
+  </div>
+</section>
+
+<nav class="nav-bar">
+  <div class="nav-inner">
+    <a href="#quickstart">快速开始</a>
+    <a href="#kanban">项目看板</a>
+    <a href="#gantt">甘特图</a>
+    <a href="#search">全局搜索</a>
+    <a href="#share">局域网共享</a>
+    <a href="#settings">设置</a>
+    <a href="#shortcuts">快捷键</a>
+    <a href="#faq">常见问题</a>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- 快速开始 -->
+  <section id="quickstart">
+    <div class="section-label">Quick Start</div>
+    <div class="section-title">快速开始</div>
+    <p class="section-desc">首次使用Fileosophy，三步即可开始管理项目</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-content">
+          <strong>设置个人档案</strong>
+          <span>首次启动时，系统会弹出欢迎向导。选择一个头像（支持 emoji 或上传图片），输入你的名字，点击「开始使用」。后续可在「设置 → 用户资料」中修改。</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-content">
+          <strong>配置状态与分类</strong>
+          <span>进入「设置 → 项目配置」页面，在「状态管理」中添加项目状态（如：规划中、进行中、已暂停、已完成、已取消），每个状态可自定义颜色。在「分类管理」中创建分类体系，配置编码前缀和识别关键词。</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-content">
+          <strong>创建第一个项目</strong>
+          <span>回到项目列表页面，点击右上角的「新建项目」按钮（或按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd>），填写项目名称、选择状态和分类，即可创建项目。项目卡片会出现在对应状态的看板列中。</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <span class="fc-icon">&#9744;</span>
+        <h4>看板管理</h4>
+        <p>拖拽式看板视图，按状态分列展示项目卡片，支持批量操作</p>
+      </div>
+      <div class="feature-card">
+        <span class="fc-icon">&#9745;</span>
+        <h4>甘特图</h4>
+        <p>时间线视图，直观把控项目起止时间和进度，支持状态色段</p>
+      </div>
+      <div class="feature-card">
+        <span class="fc-icon">&#9746;</span>
+        <h4>局域网协作</h4>
+        <p>TCP + mDNS 局域网共享，自动发现同网段实例，密码认证</p>
+      </div>
+    </div>
+
+    <div class="tip">
+      <strong>提示</strong> — 分类管理中的「识别关键词」会在批量导入文件夹时自动匹配分类，建议提前配置好关键词。
+    </div>
+  </section>
+
+  <!-- 项目看板 -->
+  <section id="kanban">
+    <div class="section-label">Kanban Board</div>
+    <div class="section-title">项目看板</div>
+    <p class="section-desc">核心工作区，以看板和表格双视图管理所有项目</p>
+
+    <h3>看板视图</h3>
+    <ul>
+      <li><strong>拖拽变更状态</strong> — 按住项目卡片拖拽到其他状态列，即可变更项目状态。拖拽时会自动记录状态变更历史。</li>
+      <li><strong>卡片信息</strong> — 每张卡片显示：项目编号、名称、分类标签、标签列表。</li>
+      <li><strong>双击打开文件夹</strong> — 双击卡片可直接打开项目关联的文件夹。</li>
+      <li><strong>底部操作</strong> — 卡片底部有快捷按钮：打开文件夹、设置共享、编辑项目。</li>
+      <li><strong>批量选择</strong> — 点击卡片左上角的复选框选中项目，支持批量状态变更。</li>
+    </ul>
+
+    <h3>表格视图</h3>
+    <p>右侧表格以列表形式展示项目，支持双击打开文件夹、点击操作按钮编辑或共享。表格列可在「设置 → 项目配置」中配置。</p>
+
+    <h3>工具栏</h3>
+    <ul>
+      <li><strong>搜索</strong> — 输入关键词实时过滤，匹配项目名称、编号。</li>
+      <li><strong>状态快捷筛选</strong> — 点击状态按钮快速切换。</li>
+      <li><strong>高级筛选</strong> — 可按分类、日期范围组合筛选。</li>
+    </ul>
+
+    <h3>项目操作</h3>
+    <table class="data-table">
+      <thead><tr><th>操作</th><th>方式</th></tr></thead>
+      <tbody>
+        <tr><td>新建项目</td><td>点击「新建项目」按钮 或 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd></td></tr>
+        <tr><td>编辑项目</td><td>点击卡片编辑按钮</td></tr>
+        <tr><td>删除项目</td><td>选中后点击删除按钮，支持批量删除</td></tr>
+        <tr><td>刷新数据</td><td>按 <kbd>F5</kbd></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 甘特图 -->
+  <section id="gantt">
+    <div class="section-label">Gantt Chart</div>
+    <div class="section-title">甘特图</div>
+    <p class="section-desc">时间线视图，直观把控项目起止时间和进度</p>
+
+    <h3>视图说明</h3>
+    <p>甘特图以 HTML 渲染，每个项目一行任务条。任务条使用项目的状态变更历史渲染多段颜色，展示项目在不同阶段的时间分配。今天日期用红色竖线标识。</p>
+
+    <h3>工具栏操作</h3>
+    <ul>
+      <li><strong>缩放</strong> — 按住 <kbd>Ctrl</kbd> 滚动鼠标滚轮缩放，支持日、月、年三种视图粒度。</li>
+      <li><strong>筛选</strong> — 可按分类或状态过滤项目。</li>
+      <li><strong>回到今天</strong> — 点击「今天」按钮一键定位。</li>
+    </ul>
+
+    <h3>交互操作</h3>
+    <ul>
+      <li><strong>悬停</strong> — 鼠标移到任务条上显示项目详情 Tooltip。</li>
+      <li><strong>里程碑</strong> — 可在甘特图上添加和管理项目里程碑。</li>
+      <li><strong>状态历史</strong> — 可查看和编辑项目状态变更历史。</li>
+    </ul>
+  </section>
+
+  <!-- 全局搜索 -->
+  <section id="search">
+    <div class="section-label">Global Search</div>
+    <div class="section-title">全局搜索</div>
+    <p class="section-desc">浮动搜索面板，快速定位任意项目</p>
+
+    <h3>使用方式</h3>
+    <p>按 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> 打开全局搜索面板。输入关键词后自动触发搜索，搜索范围包括项目编号、名称、卡片标题和文件名。</p>
+
+    <h3>键盘导航</h3>
+    <table class="data-table">
+      <thead><tr><th>按键</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>&uarr;</kbd> / <kbd>&darr;</kbd></td><td>在结果中上下移动选中项</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>打开选中的项目</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>关闭搜索面板</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 局域网共享 -->
+  <section id="share">
+    <div class="section-label">LAN Sharing</div>
+    <div class="section-title">局域网共享</div>
+    <p class="section-desc">在局域网内共享项目文件夹，支持密码认证和文件浏览</p>
+
+    <div class="two-col">
+      <div class="col-card">
+        <h4>主机端操作</h4>
+        <ol style="margin-left: 18px;">
+          <li>进入「共享」页面，点击「开启共享」选择文件夹并设置密码</li>
+          <li>查看已连接的客户端列表和活动日志</li>
+          <li>客户端可浏览共享目录和下载文件</li>
+        </ol>
+      </div>
+      <div class="col-card">
+        <h4>客户端操作</h4>
+        <ol style="margin-left: 18px;">
+          <li>进入「共享 → 连接他人」页面</li>
+          <li>输入主机地址和密码连接</li>
+          <li>浏览远程文件目录，下载所需文件</li>
+          <li>也可上传文件到主机端</li>
+        </ol>
+      </div>
+    </div>
+
+    <h3>mDNS 自动发现</h3>
+    <p>局域网内的 Fileosophy 实例会通过 mDNS 协议自动互相发现，无需手动输入 IP。发现的对等节点显示在「局域网发现」面板中。</p>
+
+    <div class="tip">
+      <strong>注意</strong> — 所有设备需在同一局域网内。传输数据通过 TCP 协议发送，建议在可信网络环境中使用。
+    </div>
+  </section>
+
+  <!-- 设置 -->
+  <section id="settings">
+    <div class="section-label">Settings</div>
+    <div class="section-title">设置</div>
+    <p class="section-desc">个性化配置，适配你的工作流</p>
+
+    <h3>用户资料</h3>
+    <p>设置个人头像和名字，支持 emoji 头像或上传图片。</p>
+
+    <h3>项目配置</h3>
+    <ul>
+      <li><strong>状态管理</strong> — 添加、编辑、删除项目状态，自定义颜色、名称和排序</li>
+      <li><strong>分类管理</strong> — 管理项目分类，配置编码前缀和识别关键词</li>
+      <li><strong>编号模板</strong> — 配置项目自动编号格式，变量：<code>{prefix}</code>、<code>{date}</code>、<code>{sequence}</code></li>
+    </ul>
+
+    <h3>通知设置</h3>
+    <p>可分别开关各类通知：项目创建、状态变更、文件上传、共享事件等。</p>
+
+    <h3>数据管理</h3>
+    <ul>
+      <li><strong>导出</strong> — 导出单个项目（JSON 完整数据或 CSV 摘要），或导出所有项目</li>
+      <li><strong>导入</strong> — 从 JSON 备份导入项目，或从文件夹批量扫描导入</li>
+    </ul>
+  </section>
+
+  <!-- 快捷键 -->
+  <section id="shortcuts">
+    <div class="section-label">Keyboard Shortcuts</div>
+    <div class="section-title">快捷键</div>
+    <p class="section-desc">常用快捷键一览，可在「设置 → 快捷键」中自定义</p>
+
+    <table class="data-table">
+      <thead><tr><th>快捷键</th><th>功能</th><th>生效范围</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></td><td>全局搜索</td><td>全局</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd></td><td>新建项目</td><td>全局</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>显示/隐藏窗口</td><td>全局</td></tr>
+        <tr><td><kbd>F5</kbd></td><td>刷新数据</td><td>全局</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>关闭弹窗</td><td>全局</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 常见问题 -->
+  <section id="faq">
+    <div class="section-label">FAQ</div>
+    <div class="section-title">常见问题</div>
+    <p class="section-desc">使用过程中可能遇到的问题与解答</p>
+
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">
+        <span>如何备份项目数据？</span>
+        <span class="faq-arrow">&#9660;</span>
+      </div>
+      <div class="faq-a">
+        所有项目数据存储在本地 SQLite 数据库文件（<code>fileosophy.db</code>）中，位于应用数据目录下。进入「设置 → 数据管理」可使用导出功能备份所有项目数据（JSON 格式）。也可直接复制数据库文件完成备份。
+      </div>
+    </div>
+
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">
+        <span>局域网共享时其他设备无法连接？</span>
+        <span class="faq-arrow">&#9660;</span>
+      </div>
+      <div class="faq-a">
+        请确保：① 所有设备在同一局域网内；② 防火墙未阻止应用的网络访问；③ 主机端已正确开启共享并设置了密码。如果 mDNS 自动发现不生效，可以手动输入主机的 IP 地址和端口进行连接。
+      </div>
+    </div>
+
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">
+        <span>如何自定义看板的列（状态）？</span>
+        <span class="faq-arrow">&#9660;</span>
+      </div>
+      <div class="faq-a">
+        进入「设置 → 项目配置 → 状态管理」，可以添加、编辑、删除和排序状态。每个状态支持自定义颜色和名称。修改后看板视图会自动更新。注意：删除状态前请确保该状态下没有项目。
+      </div>
+    </div>
+
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">
+        <span>如何切换深色模式？</span>
+        <span class="faq-arrow">&#9660;</span>
+      </div>
+      <div class="faq-a">
+        进入「设置 → 关于」，在主题选项中选择「深色模式」即可。也可以选择「跟随系统」让应用自动匹配操作系统的主题设置。
+      </div>
+    </div>
+
+    <div class="faq-item" onclick="this.classList.toggle('open')">
+      <div class="faq-q">
+        <span>支持哪些操作系统？</span>
+        <span class="faq-arrow">&#9660;</span>
+      </div>
+      <div class="faq-a">
+        Fileosophy·飞序基于 Tauri 2.x 构建，支持 Windows、macOS 和 Linux 三大平台。推荐使用 Windows 10+ 或 macOS 12+ 以获得最佳体验。
+      </div>
+    </div>
+  </section>
+
+  <!-- 反馈 -->
+  <section id="feedback">
+    <div class="section-label">Feedback</div>
+    <div class="section-title">反馈与建议</div>
+    <p class="section-desc">您的反馈是我们改进的动力</p>
+
+    <p>如果您在使用过程中遇到问题、有功能建议或想法，欢迎通过以下方式联系我们：</p>
+
+    <div class="contact-card">
+      <div class="contact-icon">&#9993;</div>
+      <div class="contact-info">
+        <h4>电子邮件</h4>
+        <p><a href="mailto:feedback@fileosophy.site">feedback@fileosophy.site</a></p>
+        <p style="margin-top: 4px;">发送邮件至上述地址，我们会尽快回复</p>
+      </div>
+    </div>
+
+    <div class="tip">
+      <strong>反馈建议</strong> — 提交反馈时，请尽量包含：问题描述、复现步骤、操作系统版本、应用版本。这将帮助我们更快定位和解决问题。
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <div class="container">
+    <svg viewBox="0 0 100 100" fill="none" style="width: 28px; height: 28px; margin-bottom: 16px; opacity: 0.4;">
+      <path d="M26,8 L64,8 L82,26 L82,92 L26,92 Z" style="stroke: var(--icon-stroke)" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M64,8 L64,26 L82,26" style="stroke: var(--icon-stroke)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="M34,57 C40,36 52,36 52,53 C52,70 64,70 66,50" style="stroke: var(--curve-stroke)" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+    <p>Fileosophy·飞序 &mdash; 在有序的体系中迸发思想的自由</p>
+    <p style="margin-top: 8px;">&copy; 2026 &middot; <a href="mailto:feedback@fileosophy.site">feedback@fileosophy.site</a></p>
+    <p style="margin-top: 12px; color: var(--text-dim); font-style: italic; letter-spacing: 0.15em;">Fileosophy团队敬献</p>
+  </div>
+</footer>
+
+</body>
+</html>

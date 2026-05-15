@@ -1,7 +1,15 @@
+pub mod export;
 pub mod files;
+pub mod folder_scan;
 pub mod folder_share;
 pub mod gantt;
 pub mod kanban;
+pub mod milestones;
+pub mod notifications;
 pub mod projects;
+pub mod search;
 pub mod settings;
+pub mod status_history;
+pub mod system;
 pub mod user;
+pub mod utils;

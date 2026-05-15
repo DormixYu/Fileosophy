@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from "react";
-import { createPortal } from "react-dom";
+import Modal from "@/components/common/Modal";
 import {
   X,
   ChevronLeft,
@@ -42,19 +42,10 @@ export default function FilePreviewModal({
 }: Props) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      switch (e.key) {
-        case "Escape":
-          onClose();
-          break;
-        case "ArrowLeft":
-          if (hasPrev) onPrev();
-          break;
-        case "ArrowRight":
-          if (hasNext) onNext();
-          break;
-      }
+      if (e.key === "ArrowLeft" && hasPrev) onPrev();
+      if (e.key === "ArrowRight" && hasNext) onNext();
     },
-    [onClose, onPrev, onNext, hasPrev, hasNext],
+    [onPrev, onNext, hasPrev, hasNext],
   );
 
   useEffect(() => {
@@ -63,8 +54,6 @@ export default function FilePreviewModal({
       return () => document.removeEventListener("keydown", handleKeyDown);
     }
   }, [open, handleKeyDown]);
-
-  if (!open) return null;
 
   const formatSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -126,27 +115,29 @@ export default function FilePreviewModal({
     return <TextPreview content={content} />;
   };
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[60] flex flex-col animate-fade-in"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
-    >
-      {/* 顶栏 */}
+  return (
+    <Modal open={open} onClose={onClose} fullScreen>
+      {/* 顶栏 — 品牌化 */}
       <div
-        className="flex items-center justify-between px-4 py-2 shrink-0"
+        className="flex items-center justify-between px-5 py-2.5 shrink-0"
         style={{ background: "var(--bg-surface)", borderBottom: "1px solid var(--border-default)" }}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <FileText size={16} strokeWidth={1.5} style={{ color: "var(--gold)" }} />
+        <div className="flex items-center gap-2.5 min-w-0">
+          {/* 鎏金装饰竖线 */}
+          <div
+            className="w-1 h-4 shrink-0 rounded-full"
+            style={{ background: "var(--gold)" }}
+          />
+          <FileText size={16} strokeWidth={1.5} style={{ color: "var(--gold)", flexShrink: 0 }} />
           <span
-            className="text-sm font-medium truncate"
+            className="text-sm font-serif truncate"
             style={{ color: "var(--text-primary)" }}
           >
             {fileName}
           </span>
           {preview && (
             <span
-              className="text-xs shrink-0"
+              className="text-xs shrink-0 font-mono"
               style={{ color: "var(--text-muted)" }}
             >
               {formatSize(preview.size)}
@@ -155,21 +146,19 @@ export default function FilePreviewModal({
         </div>
 
         <div className="flex items-center gap-1">
-          {/* 上一个 */}
           <button
             onClick={onPrev}
             disabled={!hasPrev}
-            className="p-1.5 rounded transition-colors hover:bg-[var(--bg-surface-alt)] disabled:opacity-30"
+            className="p-1.5 rounded-md transition-all hover-gold-bg disabled:opacity-30"
             style={{ color: "var(--text-secondary)" }}
             title="上一个文件 (←)"
           >
             <ChevronLeft size={16} strokeWidth={1.5} />
           </button>
-          {/* 下一个 */}
           <button
             onClick={onNext}
             disabled={!hasNext}
-            className="p-1.5 rounded transition-colors hover:bg-[var(--bg-surface-alt)] disabled:opacity-30"
+            className="p-1.5 rounded-md transition-all hover-gold-bg disabled:opacity-30"
             style={{ color: "var(--text-secondary)" }}
             title="下一个文件 (→)"
           >
@@ -178,20 +167,18 @@ export default function FilePreviewModal({
 
           <div className="w-px h-4 mx-1" style={{ background: "var(--border-default)" }} />
 
-          {/* 用系统应用打开 */}
           <button
             onClick={onOpenExternal}
-            className="p-1.5 rounded transition-colors hover:bg-[var(--bg-surface-alt)]"
+            className="p-1.5 rounded-md transition-all hover-gold-bg hover-gold-text"
             style={{ color: "var(--text-secondary)" }}
             title="用系统默认应用打开"
           >
             <ExternalLink size={16} strokeWidth={1.5} />
           </button>
 
-          {/* 关闭 */}
           <button
             onClick={onClose}
-            className="p-1.5 rounded transition-colors hover:bg-[var(--bg-surface-alt)]"
+            className="p-1.5 rounded-md transition-all hover-gold-bg"
             style={{ color: "var(--text-tertiary)" }}
             title="关闭 (Esc)"
           >
@@ -202,7 +189,6 @@ export default function FilePreviewModal({
 
       {/* 预览内容 */}
       <div className="flex-1 overflow-hidden p-4 flex flex-col">{renderPreview()}</div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }

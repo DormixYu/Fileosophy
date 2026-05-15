@@ -1,16 +1,23 @@
+use crate::commands::utils::{hex_encode, read_json_frame, send_json_frame};
+use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
 use std::thread;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
+use uuid::Uuid;
 
 use crate::events;
 
-/// TCP 帧最大大小（10MB），防止恶意超大帧导致内存耗尽
-const MAX_FRAME_SIZE: usize = 10 * 1024 * 1024;
+/// 接收文件大小上限（500MB）
+const MAX_RECEIVED_FILE_SIZE: u64 = 500 * 1024 * 1024;
+
+/// 最大并发连接数
+const MAX_CONNECTIONS: u32 = 10;
 
 /// 文件传输协议头部，通过 JSON 序列化后以 4 字节长度前缀发送
 #[derive(Debug, Serialize, Deserialize)]
@@ -18,6 +25,8 @@ pub struct TransferHeader {
     pub file_name: String,
     pub file_size: u64,
     pub sender: String,
+    pub token: String,
+    pub sha256_hash: String,
 }
 
 /// 接收到的文件信息
@@ -32,7 +41,11 @@ pub struct ReceivedFile {
 /// 文件传输服务器，监听局域网连接
 pub struct FileTransferServer {
     port: u16,
-    running: Arc<Mutex<bool>>,
+    #[allow(dead_code)]
+    running: Arc<AtomicBool>,
+    #[allow(dead_code)]
+    connection_count: Arc<AtomicU32>,
+    expected_token: String,
 }
 
 impl FileTransferServer {
@@ -40,26 +53,39 @@ impl FileTransferServer {
     pub fn start(app_handle: AppHandle) -> Result<Self, String> {
         let listener = TcpListener::bind("0.0.0.0:0").map_err(|e| format!("绑定端口失败: {e}"))?;
         let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
-        let running = Arc::new(Mutex::new(true));
+        let running = Arc::new(AtomicBool::new(true));
         let running_clone = Arc::clone(&running);
+        let connection_count = Arc::new(AtomicU32::new(0));
+        let conn_count_clone = Arc::clone(&connection_count);
+        let expected_token = Uuid::new_v4().to_string();
+        let expected_token_clone = expected_token.clone();
 
         thread::spawn(move || {
             log::info!("文件传输服务器已启动，端口: {port}");
             listener.set_nonblocking(true).ok();
 
             loop {
-                if !running_clone.lock().map(|r| *r).unwrap_or(false) {
+                if !running_clone.load(Ordering::SeqCst) {
                     break;
                 }
 
                 match listener.accept() {
                     Ok((stream, addr)) => {
+                        // 检查连接数上限
+                        if conn_count_clone.load(Ordering::SeqCst) >= MAX_CONNECTIONS {
+                            log::warn!("拒绝连接 {addr}: 已达到最大连接数 {MAX_CONNECTIONS}");
+                            continue;
+                        }
                         log::info!("收到连接: {addr}");
+                        conn_count_clone.fetch_add(1, Ordering::SeqCst);
                         let handle = app_handle.clone();
+                        let cc = Arc::clone(&conn_count_clone);
+                        let token = expected_token_clone.clone();
                         thread::spawn(move || {
-                            if let Err(e) = handle_incoming(stream, handle) {
+                            if let Err(e) = handle_incoming(stream, handle, &token) {
                                 log::error!("处理传入文件失败: {e}");
                             }
+                            cc.fetch_sub(1, Ordering::SeqCst);
                         });
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -74,43 +100,53 @@ impl FileTransferServer {
             }
         });
 
-        Ok(Self { port, running })
+        Ok(Self { port, running, connection_count, expected_token })
     }
 
     pub fn port(&self) -> u16 {
         self.port
     }
 
+    pub fn expected_token(&self) -> &str {
+        &self.expected_token
+    }
+
     pub fn stop(&self) {
-        if let Ok(mut r) = self.running.lock() {
-            *r = false;
-        }
+        self.running.store(false, Ordering::SeqCst);
     }
 }
 
-/// 处理传入的文件传输连接
-fn handle_incoming(mut stream: TcpStream, app_handle: AppHandle) -> Result<(), String> {
-    stream
-        .set_read_timeout(Some(std::time::Duration::from_secs(30)))
-        .ok();
+pub type TransferState = std::sync::Mutex<FileTransferServer>;
 
-    // 读取 4 字节头部长度
-    let mut len_buf = [0u8; 4];
-    stream
-        .read_exact(&mut len_buf)
-        .map_err(|e| format!("读取头部长度失败: {e}"))?;
-    let header_len = u32::from_be_bytes(len_buf) as usize;
-    if header_len > MAX_FRAME_SIZE {
-        return Err(format!("帧大小超限: {header_len} > {MAX_FRAME_SIZE}"));
+#[tauri::command]
+pub fn get_transfer_token(state: State<'_, TransferState>) -> Result<String, String> {
+    let guard = state.lock().map_err(|e| e.to_string())?;
+    Ok(guard.expected_token().to_string())
+}
+
+/// 处理传入的文件传输连接
+fn handle_incoming(stream: TcpStream, app_handle: AppHandle, expected_token: &str) -> Result<(), String> {
+    // 显式设为阻塞模式（Windows 上从非阻塞 listener accept 的 stream 可能继承非阻塞）
+    let socket = socket2::Socket::from(stream);
+    socket.set_nonblocking(false).map_err(|e| format!("设置阻塞模式失败: {e}"))?;
+    let mut stream: TcpStream = socket.into();
+
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(30)))
+        .map_err(|e| format!("设置读超时失败: {e}"))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(30)))
+        .map_err(|e| format!("设置写超时失败: {e}"))?;
+
+    let header: TransferHeader = read_json_frame(&mut stream)?;
+
+    // 检查接收文件大小上限
+    if header.file_size > MAX_RECEIVED_FILE_SIZE {
+        return Err(format!("接收文件过大: {} bytes，超过上限 {} bytes", header.file_size, MAX_RECEIVED_FILE_SIZE));
     }
 
-    // 读取 JSON 头部
-    let mut header_buf = vec![0u8; header_len];
-    stream
-        .read_exact(&mut header_buf)
-        .map_err(|e| format!("读取头部数据失败: {e}"))?;
-    let header: TransferHeader =
-        serde_json::from_slice(&header_buf).map_err(|e| format!("解析头部失败: {e}"))?;
+    // 检查 token 是否与 expected_token 匹配
+    if header.token != expected_token {
+        return Err("认证 token 不匹配，连接被拒绝".to_string());
+    }
 
     // 确定保存路径
     let save_dir = get_received_files_dir(&app_handle);
@@ -132,6 +168,18 @@ fn handle_incoming(mut stream: TcpStream, app_handle: AppHandle) -> Result<(), S
         file.write_all(&buf[..to_read])
             .map_err(|e| format!("写入文件失败: {e}"))?;
         remaining -= to_read as u64;
+    }
+
+    // 验证 SHA-256
+    let mut hasher = Sha256::new();
+    {
+        let mut verify_file = fs::File::open(&save_path).map_err(|e| format!("打开文件验证hash失败: {e}"))?;
+        std::io::copy(&mut verify_file, &mut hasher).map_err(|e| format!("计算验证hash失败: {e}"))?;
+    }
+    let computed_hash = hex_encode(&hasher.finalize());
+    if computed_hash != header.sha256_hash {
+        let _ = fs::remove_file(&save_path);
+        return Err(format!("文件完整性校验失败: SHA-256 不匹配 (期望: {}, 实际: {})", header.sha256_hash, computed_hash));
     }
 
     log::info!(
@@ -168,6 +216,7 @@ pub fn send_file(
     peer_port: u16,
     file_path: &str,
     sender_name: &str,
+    token: &str,
 ) -> Result<(), String> {
     let src = PathBuf::from(file_path);
     if !src.exists() {
@@ -183,27 +232,28 @@ pub fn send_file(
         .map(|m| m.len())
         .map_err(|e| format!("获取文件大小失败: {e}"))?;
 
+    // 计算 SHA-256
+    let mut hasher = Sha256::new();
+    {
+        let mut hash_file = fs::File::open(&src).map_err(|e| format!("打开文件计算hash失败: {e}"))?;
+        std::io::copy(&mut hash_file, &mut hasher).map_err(|e| format!("计算文件hash失败: {e}"))?;
+    }
+    let sha256_hash = hex_encode(&hasher.finalize());
+
     let header = TransferHeader {
         file_name,
         file_size,
         sender: sender_name.to_string(),
+        token: token.to_string(),
+        sha256_hash,
     };
-
-    let header_json =
-        serde_json::to_vec(&header).map_err(|e| format!("序列化头部失败: {e}"))?;
-    let header_len = (header_json.len() as u32).to_be_bytes();
 
     let addr = format!("{peer_addr}:{peer_port}");
     let mut stream =
         TcpStream::connect(&addr).map_err(|e| format!("连接对等节点失败: {e}"))?;
 
-    // 发送: 4字节长度 + JSON头部 + 文件内容
-    stream
-        .write_all(&header_len)
-        .map_err(|e| format!("发送头部长度失败: {e}"))?;
-    stream
-        .write_all(&header_json)
-        .map_err(|e| format!("发送头部数据失败: {e}"))?;
+    // 发送 JSON 头部帧
+    send_json_frame(&mut stream, &header)?;
 
     let mut file = fs::File::open(&src).map_err(|e| format!("打开文件失败: {e}"))?;
     std::io::copy(&mut file, &mut stream).map_err(|e| format!("发送文件内容失败: {e}"))?;

@@ -18,17 +18,17 @@ export default function KanbanCard({ card, columnType, onComplete, onClick, onDe
     <div
       className="flex-1 rounded-md p-2.5 cursor-pointer transition-all hover-lift group/card relative"
       style={{
-        background: "var(--bg-elevated)",
-        border: "1px solid var(--border-light)",
-        opacity: isTodoDone ? 0.6 : 1,
+        background: isTodoDone ? "var(--bg-surface)" : "var(--bg-elevated)",
+        border: `1px solid ${isTodoDone ? "var(--border-default)" : "var(--border-light)"}`,
       }}
       onClick={onClick}
     >
       {/* 删除按钮 */}
       {onDelete && (
         <button
-          className="absolute top-1 right-1 p-0.5 rounded opacity-0 group-hover/card:opacity-100 transition-opacity"
-          style={{ color: "var(--color-danger)" }}
+          className="absolute top-1 right-1 p-0.5 rounded opacity-0 group-hover/card:opacity-100 transition-opacity hover-danger-text"
+          style={{ color: "var(--text-muted)" }}
+          aria-label="删除卡片"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
@@ -54,6 +54,7 @@ export default function KanbanCard({ card, columnType, onComplete, onClick, onDe
         {isTodo && onComplete && (
           <button
             className="mt-0.5 shrink-0"
+            aria-label={isTodoDone ? "标记为未完成" : "标记为已完成"}
             onClick={(e) => {
               e.stopPropagation();
               onComplete();
@@ -85,7 +86,7 @@ export default function KanbanCard({ card, columnType, onComplete, onClick, onDe
           <p
             className="text-xs mb-1 pr-4"
             style={{
-              color: "var(--text-primary)",
+              color: isTodoDone ? "var(--text-dim)" : "var(--text-primary)",
               textDecoration: isTodoDone ? "line-through" : "none",
             }}
           >
@@ -94,7 +95,7 @@ export default function KanbanCard({ card, columnType, onComplete, onClick, onDe
           {card.description && (
             <p
               className="text-[10px] line-clamp-2"
-              style={{ color: "var(--text-tertiary)" }}
+              style={{ color: isTodoDone ? "var(--text-dim)" : "var(--text-tertiary)" }}
             >
               {card.description}
             </p>
@@ -103,7 +104,7 @@ export default function KanbanCard({ card, columnType, onComplete, onClick, onDe
           {card.due_date && (
             <div
               className="flex items-center gap-1 mt-1 text-[9px]"
-              style={{ color: "var(--text-muted)" }}
+              style={{ color: isTodoDone ? "var(--text-dim)" : "var(--text-muted)" }}
             >
               <Calendar size={9} strokeWidth={1.5} />
               {card.due_date}

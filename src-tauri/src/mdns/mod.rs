@@ -11,12 +11,14 @@ pub struct Peer {
     pub host: String,
     pub port: u16,
     pub addresses: Vec<String>,
+    pub token: String,
 }
 
 pub struct MdnsService {
     daemon: ServiceDaemon,
     peers: Arc<Mutex<HashMap<String, Peer>>>,
     registered_name: Option<String>,
+    registered_fullname: Option<String>,
 }
 
 impl MdnsService {
@@ -26,16 +28,18 @@ impl MdnsService {
             daemon,
             peers: Arc::new(Mutex::new(HashMap::new())),
             registered_name: None,
+            registered_fullname: None,
         })
     }
 
     /// 注册本机为 Fileosophy 服务实例
-    pub fn register(&mut self, port: u16) -> Result<(), String> {
+    pub fn register(&mut self, port: u16, token: &str) -> Result<(), String> {
         let hostname = get_hostname();
 
         let instance_name = format!("Fileosophy@{hostname}");
         let mut properties = std::collections::HashMap::new();
         properties.insert("name".to_string(), hostname.clone());
+        properties.insert("token".to_string(), token.to_string());
 
         let my_ip = local_ip_address::local_ip()
             .map(|ip| ip.to_string())
@@ -55,7 +59,8 @@ impl MdnsService {
             .register(service_info)
             .map_err(|e| format!("注册 mDNS 服务失败: {e}"))?;
 
-        self.registered_name = Some(instance_name);
+        self.registered_name = Some(instance_name.clone());
+        self.registered_fullname = Some(format!("{instance_name}.{SERVICE_TYPE}"));
         log::info!("mDNS 服务已注册，端口: {port}");
         Ok(())
     }
@@ -87,12 +92,16 @@ impl MdnsService {
                             info.get_addresses().iter().map(|a| a.to_string()).collect();
                         let host = info.get_hostname().to_string();
                         let port = info.get_port();
+                        let token = info.get_property_val_str("token")
+                            .map(|s| s.to_string())
+                            .unwrap_or_default();
 
                         let peer = Peer {
                             name: resolved_name.clone(),
                             host,
                             port,
                             addresses,
+                            token,
                         };
 
                         if let Ok(mut map) = peers.lock() {
@@ -123,9 +132,8 @@ impl MdnsService {
 
     /// 停止 mDNS 服务
     pub fn shutdown(&self) -> Result<(), String> {
-        if let Some(ref name) = self.registered_name {
-            let full_name = format!("{name}.{SERVICE_TYPE}");
-            let _ = self.daemon.unregister(&full_name);
+        if let Some(ref fullname) = self.registered_fullname {
+            let _ = self.daemon.unregister(fullname);
         }
         self.daemon
             .shutdown()

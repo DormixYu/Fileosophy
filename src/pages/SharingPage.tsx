@@ -33,32 +33,40 @@ export default function SharingPage() {
     <div className="h-full flex flex-col animate-slide-up">
       {/* 页头 */}
       <div
-        className="shrink-0 h-14 px-6 flex items-center justify-between border-b"
+        className="shrink-0 px-6 flex items-center gap-6 border-b py-4"
         style={{
           background: "var(--bg-surface)",
           borderColor: "var(--border-light)",
         }}
       >
-        <h1 className="text-headline font-serif" style={{ color: "var(--text-primary)" }}>
-          共享
-        </h1>
+        {/* 页面标题 + 鎏金装饰线 */}
+        <div className="flex items-center gap-3">
+          <h1 className="text-headline font-serif" style={{ color: "var(--text-primary)" }}>
+            局域网共享
+          </h1>
+          <div
+            className="w-12 h-[2px] rounded-full"
+            style={{ background: "var(--gold)", opacity: 0.6 }}
+          />
+        </div>
 
         {/* Tab 栏 */}
         <div
-          className="flex gap-1 p-1 rounded-lg"
+          className="flex gap-1 p-1 rounded-lg ml-auto"
           style={{ background: "var(--bg-surface-alt)" }}
         >
           {tabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
-              className="flex items-center gap-2 px-4 py-2 rounded-md text-xs transition-all"
+              className="flex items-center gap-2 px-4 py-2 rounded-md text-xs transition-all relative"
               style={{
                 background: activeTab === key ? "var(--bg-elevated)" : "transparent",
-                color: activeTab === key ? "var(--gold)" : "var(--text-tertiary)",
+                color: activeTab === key ? "var(--gold)" : "var(--text-secondary)",
                 boxShadow: activeTab === key ? "var(--shadow-sm)" : "none",
                 cursor: "pointer",
                 border: "none",
+                borderBottom: activeTab === key ? "2px solid var(--gold)" : "2px solid transparent",
               }}
             >
               <Icon size={14} strokeWidth={1.5} />

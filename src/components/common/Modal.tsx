@@ -9,6 +9,19 @@ interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   width?: string;
+  headerExtra?: React.ReactNode;
+  fullScreen?: boolean;
+}
+
+interface ConfirmDialogProps {
+  open: boolean;
+  title?: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
 }
 
 export default function Modal({
@@ -18,6 +31,8 @@ export default function Modal({
   children,
   footer,
   width = "max-w-md",
+  headerExtra,
+  fullScreen = false,
 }: ModalProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -35,10 +50,22 @@ export default function Modal({
 
   if (!open) return null;
 
+  if (fullScreen) {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-[60] flex flex-col animate-fade-in"
+        style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(8px)" }}
+      >
+        {children}
+      </div>,
+      document.body,
+    );
+  }
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in"
-      style={{ background: "rgba(0,0,0,0.45)" }}
+      style={{ background: "rgba(0,0,0,0.40)", backdropFilter: "blur(4px)" }}
       onClick={onClose}
     >
       <div
@@ -46,31 +73,43 @@ export default function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className="rounded-xl shadow-xl max-h-[85vh] flex flex-col"
+          className="overflow-hidden max-h-[85vh] flex flex-col"
           style={{
             background: "var(--bg-surface)",
             border: "1px solid var(--border-default)",
+            borderRadius: "var(--radius-lg)",
+            boxShadow: "var(--shadow-lg)",
           }}
         >
           {/* 头部 */}
           {title && (
             <div
-              className="flex items-center justify-between px-5 py-3.5 border-b"
-              style={{ borderColor: "var(--border-light)" }}
+              className="flex items-center justify-between px-5 py-3.5"
+              style={{ borderBottom: "1px solid var(--border-light)" }}
             >
-              <h2
-                className="text-base font-serif tracking-wide"
-                style={{ color: "var(--text-primary)" }}
-              >
-                {title}
-              </h2>
-              <button
-                onClick={onClose}
-                className="p-1 rounded-md transition-colors hover:bg-[var(--bg-surface-alt)]"
-                style={{ color: "var(--text-tertiary)" }}
-              >
-                <X size={16} strokeWidth={1.5} />
-              </button>
+              <div className="flex items-center gap-3 min-w-0">
+                {/* 鎏金装饰线 */}
+                <div
+                  className="w-1 h-5 shrink-0 rounded-full"
+                  style={{ background: "var(--gold)" }}
+                />
+                <h2
+                  className="text-base font-serif tracking-wide truncate"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  {title}
+                </h2>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {headerExtra}
+                <button
+                  onClick={onClose}
+                  className="p-1.5 rounded-md transition-all hover-gold-bg"
+                  style={{ color: "var(--text-tertiary)" }}
+                >
+                  <X size={16} strokeWidth={1.5} />
+                </button>
+              </div>
             </div>
           )}
 
@@ -80,8 +119,8 @@ export default function Modal({
           {/* 底部 */}
           {footer && (
             <div
-              className="flex items-center justify-end gap-2 px-5 py-3 border-t"
-              style={{ borderColor: "var(--border-light)" }}
+              className="flex items-center justify-end gap-2 px-5 py-3"
+              style={{ borderTop: "1px solid var(--border-light)" }}
             >
               {footer}
             </div>
@@ -90,5 +129,45 @@ export default function Modal({
       </div>
     </div>,
     document.body,
+  );
+}
+
+export function ConfirmDialog({
+  open,
+  title = "确认操作",
+  message,
+  confirmLabel = "确认",
+  cancelLabel = "取消",
+  danger,
+  onConfirm,
+  onClose,
+}: ConfirmDialogProps) {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      width="max-w-sm"
+      footer={
+        <>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>
+            {cancelLabel}
+          </button>
+          <button
+            className={danger ? "btn btn-danger btn-sm" : "btn btn-primary btn-sm"}
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+          >
+            {confirmLabel}
+          </button>
+        </>
+      }
+    >
+      <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+        {message}
+      </p>
+    </Modal>
   );
 }
